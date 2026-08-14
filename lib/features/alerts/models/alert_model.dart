@@ -99,18 +99,47 @@ class AlertModel {
   }
 
   factory AlertModel.fromJson(Map<String, dynamic> json) {
+    final eventType = json.stringOrNull('eventType');
+    final category = json.stringOrNull('category') ?? eventType;
+    final detail = json.stringOrNull('detail');
+    final timestamp =
+        json.dateTimeOrNull('timestamp') ??
+        json.dateTimeOrNull('timestampEpochSeconds') ??
+        DateTime.now();
     return AlertModel(
       id:
           json.stringOrNull('id') ??
-          '${json.stringOrNull('category')}-${json.dateTimeOrNull('timestamp')?.millisecondsSinceEpoch}',
-      severity: AlertSeverity.fromWire(json.stringOrNull('severity')),
-      category: AlertCategory.fromWire(json.stringOrNull('category')),
-      title: json.stringOrNull('title') ?? 'System Event',
-      message: json.stringOrNull('message') ?? '',
-      timestamp: json.dateTimeOrNull('timestamp') ?? DateTime.now(),
-      nodeMac: json.stringOrNull('node_mac'),
+          '$category-${timestamp.millisecondsSinceEpoch}',
+      severity: AlertSeverity.fromWire(
+        json.stringOrNull('severity') ?? _severityForEvent(eventType),
+      ),
+      category: AlertCategory.fromWire(category),
+      title: json.stringOrNull('title') ?? _titleForEvent(eventType),
+      message: json.stringOrNull('message') ?? detail ?? '',
+      timestamp: timestamp,
+      nodeMac: json.stringOrNull('node_mac') ?? json.stringOrNull('target'),
       loadId: json.stringOrNull('load_id'),
       acknowledged: json.boolOrNull('acknowledged') ?? false,
     );
+  }
+
+  static String _severityForEvent(String? eventType) {
+    switch (eventType) {
+      case 'NODE_OFFLINE':
+      case 'RELAY_FAILURE':
+      case 'SENSOR_FAULT':
+        return 'warning';
+      default:
+        return 'info';
+    }
+  }
+
+  static String _titleForEvent(String? eventType) {
+    if (eventType == null || eventType.isEmpty) return 'System Event';
+    return eventType
+        .toLowerCase()
+        .split('_')
+        .map((word) => word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}')
+        .join(' ');
   }
 }

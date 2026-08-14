@@ -6,7 +6,8 @@ enum CommandStatus { pending, confirmed, failed }
 class CommandOutcome {
   const CommandOutcome._(this.status, this.message);
 
-  const CommandOutcome.confirmed() : this._(CommandStatus.confirmed, null);
+  const CommandOutcome.confirmed([String? message])
+    : this._(CommandStatus.confirmed, message);
   const CommandOutcome.failed(String message)
     : this._(CommandStatus.failed, message);
 

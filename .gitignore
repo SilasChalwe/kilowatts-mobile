@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android release-signing material is installation/owner private.
+/android/key.properties
+/android/*.jks
+/android/*.keystore

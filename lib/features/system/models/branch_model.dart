@@ -7,14 +7,15 @@ enum BranchStatus {
   unknown;
 
   /// Firmware has no wire-level branch status — derived client-side from
-  /// the attached Load's `health` plus how close current draw is to the
-  /// configured limit.
+  /// the attached Load's relay health plus the installer-rated current
+  /// estimate relative to the configured branch limit. An estimate can
+  /// warn about an unsafe configuration, but cannot diagnose a live fault.
   static BranchStatus derive({
     required String? loadHealth,
     required double? utilization,
   }) {
     if (loadHealth == 'FAULTED') return BranchStatus.fault;
-    if (utilization != null && utilization >= 1.0) return BranchStatus.fault;
+    if (utilization != null && utilization >= 1.0) return BranchStatus.warning;
     if (utilization != null && utilization >= 0.9) return BranchStatus.warning;
     if (loadHealth == null && utilization == null) return BranchStatus.unknown;
     return BranchStatus.healthy;
@@ -32,7 +33,7 @@ class BranchModel {
     this.name,
     this.safeMaxCurrentA,
     this.safeMaxCurrentConfigured = false,
-    this.currentDrawA,
+    this.estimatedCurrentA,
     this.status = BranchStatus.unknown,
     this.loadIds = const [],
   });
@@ -45,7 +46,8 @@ class BranchModel {
   /// Whether firmware actually has a reported `BranchConfiguration` for
   /// this relay pin yet, vs. a placeholder zero.
   final bool safeMaxCurrentConfigured;
-  final double? currentDrawA;
+  /// Derived from the installer-rated load current; not a live branch reading.
+  final double? estimatedCurrentA;
   final BranchStatus status;
   final List<String> loadIds;
 
@@ -54,24 +56,24 @@ class BranchModel {
   double? get utilization {
     if (safeMaxCurrentA == null ||
         safeMaxCurrentA == 0 ||
-        currentDrawA == null) {
+        estimatedCurrentA == null) {
       return null;
     }
-    return (currentDrawA! / safeMaxCurrentA!).clamp(0, 1.5);
+    return (estimatedCurrentA! / safeMaxCurrentA!).clamp(0, 1.5);
   }
 
   factory BranchModel.fromJson(Map<String, dynamic> json) {
     final nodeMac = json.stringOrNull('nodeMac') ?? '';
     final relayPin = json.intOrNull('relayPin') ?? -1;
     final load = json.mapOrNull('load');
-    final currentDrawA = load?.doubleOrNull('measuredCurrentAmps');
+    final estimatedCurrentA = load?.doubleOrNull('nominalCurrentAmps');
     final safeMaxCurrentA = json.doubleOrNull('maximumCurrentAmps');
     final double? utilization =
         (safeMaxCurrentA == null ||
             safeMaxCurrentA == 0 ||
-            currentDrawA == null)
+            estimatedCurrentA == null)
         ? null
-        : (currentDrawA / safeMaxCurrentA).clamp(0, 1.5).toDouble();
+        : (estimatedCurrentA / safeMaxCurrentA).clamp(0, 1.5).toDouble();
 
     return BranchModel(
       owningNodeMac: nodeMac,
@@ -80,7 +82,7 @@ class BranchModel {
       safeMaxCurrentA: safeMaxCurrentA,
       safeMaxCurrentConfigured:
           json.boolOrNull('maximumCurrentConfigured') ?? false,
-      currentDrawA: currentDrawA,
+      estimatedCurrentA: estimatedCurrentA,
       status: BranchStatus.derive(
         loadHealth: load?.stringOrNull('health'),
         utilization: utilization,

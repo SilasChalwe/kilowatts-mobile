@@ -15,7 +15,8 @@ class SystemStateModel {
     this.batterySocPercent,
     this.batteryVoltage,
     this.batteryCurrent,
-    this.measuredTotalLoadPowerW,
+    this.batterySensorConfigured,
+    this.estimatedTotalLoadPowerW,
     this.availablePowerW,
     this.fixedLoadPowerW,
     this.autoLoadPowerW,
@@ -36,8 +37,10 @@ class SystemStateModel {
   final double? batterySocPercent;
   final double? batteryVoltage;
   final double? batteryCurrent;
+  final bool? batterySensorConfigured;
 
-  final double? measuredTotalLoadPowerW;
+  /// Conservative total derived from relay state and installer ratings.
+  final double? estimatedTotalLoadPowerW;
   final double? availablePowerW;
   final double? fixedLoadPowerW;
   final double? autoLoadPowerW;
@@ -86,8 +89,9 @@ class SystemStateModel {
       batterySocPercent: battery.doubleOrNull('stateOfChargePercent'),
       batteryVoltage: battery.doubleOrNull('voltageVolts'),
       batteryCurrent: battery.doubleOrNull('currentAmps'),
-      measuredTotalLoadPowerW: power.doubleOrNull(
-        'measuredTotalLoadPowerWatts',
+      batterySensorConfigured: battery.boolOrNull('sensorConfigured'),
+      estimatedTotalLoadPowerW: power.doubleOrNull(
+        'estimatedTotalLoadPowerWatts',
       ),
       availablePowerW: power.doubleOrNull('availablePowerWatts'),
       fixedLoadPowerW: power.doubleOrNull('fixedOnRunningPowerWatts'),
@@ -103,7 +107,7 @@ class SystemStateModel {
           (lastOptimizationEpoch == null || lastOptimizationEpoch == 0)
           ? null
           : time.dateTimeOrNull('lastOptimizationEpochSeconds'),
-      sensorInputSource: diagnostics.stringOrNull('sensorInputSource'),
+      sensorInputSource: battery.stringOrNull('measurementSource'),
       faultCount: diagnostics.intOrNull('faultCount'),
       faultSummary: diagnostics.stringOrNull('faultSummary'),
       receivedAt: DateTime.now(),

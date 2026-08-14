@@ -9,6 +9,7 @@ import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../system/models/system_state_model.dart';
+import 'system_connection_settings_screen.dart';
 import '../widgets/settings_tile.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -59,6 +60,17 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            SettingsTile(
+              icon: Icons.router_outlined,
+              title: 'System connection',
+              subtitle: 'Connect this phone to your installed Kilowatts system',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SystemConnectionSettingsScreen(),
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.md),

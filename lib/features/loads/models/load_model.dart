@@ -165,8 +165,9 @@ class LoadModel {
     this.health = LoadHealth.available,
     this.schedule = LoadSchedule.disabled,
     this.rejectionReason,
-    this.currentPowerW,
-    this.runningPowerW,
+    this.plannedPowerW,
+    this.ratedVoltageV,
+    this.ratedCurrentA,
     this.startupPowerW,
     this.lastUpdated,
   });
@@ -199,8 +200,10 @@ class LoadModel {
   final LoadHealth health;
   final LoadSchedule schedule;
   final LoadRejectionReason? rejectionReason;
-  final double? currentPowerW;
-  final double? runningPowerW;
+  /// Installer-rated planning value (V × A), never a live per-load reading.
+  final double? plannedPowerW;
+  final double? ratedVoltageV;
+  final double? ratedCurrentA;
   final double? startupPowerW;
 
   /// When this snapshot was parsed locally — firmware does not publish a
@@ -237,8 +240,9 @@ class LoadModel {
       rejectionReason: LoadRejectionReason.fromWire(
         json.stringOrNull('rejectionReason'),
       ),
-      currentPowerW: json.doubleOrNull('measuredPowerWatts'),
-      runningPowerW: json.doubleOrNull('runningWatts'),
+      plannedPowerW: json.doubleOrNull('nominalPowerWatts'),
+      ratedVoltageV: json.doubleOrNull('nominalVoltageVolts'),
+      ratedCurrentA: json.doubleOrNull('nominalCurrentAmps'),
       startupPowerW: json.doubleOrNull('startupWatts'),
       lastUpdated: DateTime.now(),
     );

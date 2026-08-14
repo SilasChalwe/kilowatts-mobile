@@ -61,7 +61,7 @@ class BranchCard extends StatelessWidget {
                 ),
               ),
               Text(
-                Formatters.current(branch.currentDrawA),
+                '${Formatters.current(branch.estimatedCurrentA)} est.',
                 style: AppTextStyles.caption,
               ),
               if (onTap != null) ...[

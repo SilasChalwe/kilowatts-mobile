@@ -1,0 +1,9 @@
+{
+  "name": "Kilowatts Installer Console",
+  "short_name": "Kilowatts",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f7b51",
+  "description": "Installer configuration and monitoring console for Kilowatts."
+}

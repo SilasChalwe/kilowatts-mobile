@@ -45,13 +45,12 @@ class _SetupSummaryScreenState extends State<SetupSummaryScreen> {
         nodeMac: draft.owningNodeMac,
         relayPin: draft.relayPin,
         mode: draft.mode,
+        currentRequestedState: false,
         priority: draft.priority,
         schedule: draft.schedule,
       );
       if (!outcome.isConfirmed) failureCount++;
     }
-
-    await appState.setSetupComplete(true);
 
     if (!mounted) return;
 
@@ -60,11 +59,13 @@ class _SetupSummaryScreenState extends State<SetupSummaryScreen> {
         _isFinishing = false;
         _warning =
             '$failureCount setting${failureCount == 1 ? '' : 's'} could not be confirmed by the Central Node yet. '
-            'Your choices are saved and setup is complete — you can adjust them again from the app.';
+            'Setup has not been marked complete. Correct the failed commands and try again.';
       });
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
+      return;
     }
+
+    await appState.setSetupComplete(true);
+    if (!mounted) return;
 
     Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.root, (_) => false);
   }
