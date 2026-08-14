@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "889763140910",
+    "project_id": "kilowatts-covianhive-22177295",
+    "storage_bucket": "kilowatts-covianhive-22177295.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:889763140910:android:973a383adf73ffe26a96bf",
+        "android_client_info": {
+          "package_name": "tech.covianhive.kilowatts_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCz0hoJf4WZug2sy-Q0a9IJ8Sr3twtg6mk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
