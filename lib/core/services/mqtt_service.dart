@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
 
+import '../../features/admin/models/installer_node_model.dart';
 import '../../features/alerts/models/alert_model.dart';
 import '../../features/loads/models/load_model.dart';
 import '../../features/setup/models/setup_session.dart';
@@ -14,6 +13,7 @@ import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
 import 'command_outcome.dart';
 import 'local_state_service.dart';
+import 'mqtt_client_adapter.dart';
 import 'mqtt_config.dart';
 import 'mqtt_credentials_store.dart';
 
@@ -32,8 +32,8 @@ enum MqttConnectionStatus {
 /// once here and fanned out as parsed domain models; nothing outside this
 /// class talks to mqtt_client directly, decodes a topic payload, or holds
 /// broker credentials. The Central Node is the only embedded MQTT client —
-/// Smart Nodes never appear on the broker, so this service only ever needs
-/// the six `kilowatts/v1/...` topics.
+/// Smart Nodes never appear on the broker. This service talks only to the
+/// Central Node's installation-scoped topic namespace.
 ///
 /// Credentials come from [MqttCredentialsStore] (user-entered, on-device
 /// only) rather than being configured at construction — [connect] loads
@@ -50,11 +50,12 @@ class MqttService {
   final MqttCredentialsStore _credentialsStore;
   final LocalStateService? cache;
 
-  MqttServerClient? _client;
+  MqttClient? _client;
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
   bool _manualDisconnect = false;
   bool _credentialsLoaded = false;
+  bool _disposed = false;
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>?
   _updatesSubscription;
 
@@ -63,6 +64,8 @@ class MqttService {
   final _topologyController = StreamController<TopologyModel>.broadcast();
   final _loadsController = StreamController<List<LoadModel>>.broadcast();
   final _alertController = StreamController<AlertModel>.broadcast();
+  final _installerNodesController =
+      StreamController<List<InstallerNodeModel>>.broadcast();
 
   final Map<String, Completer<CommandOutcome>> _pendingCommands = {};
 
@@ -77,21 +80,37 @@ class MqttService {
   Stream<TopologyModel> get topologyStream => _topologyController.stream;
   Stream<List<LoadModel>> get loadsStream => _loadsController.stream;
   Stream<AlertModel> get alertStream => _alertController.stream;
+  Stream<List<InstallerNodeModel>> get installerNodesStream =>
+      _installerNodesController.stream;
 
   bool get isConfigured => _config.isConfigured;
+
+  /// Reads the persisted connection once without opening a broker session.
+  ///
+  /// The web installer console needs this before it fills its connection
+  /// form; otherwise a returning installer would see an empty form even
+  /// though valid credentials were already stored on that device.
+  Future<MqttConfig> loadMqttConfig() async {
+    if (!_credentialsLoaded) {
+      _credentialsLoaded = true;
+      final saved = await _credentialsStore.read();
+      if (saved != null) _config = saved;
+    }
+    return _config;
+  }
 
   /// Connects using whatever credentials the user has already saved. The
   /// first call loads them from [MqttCredentialsStore]; if none have been
   /// entered yet, this reports [MqttConnectionStatus.notConfigured] instead
   /// of attempting a connection with empty credentials.
   Future<void> connect() async {
+    if (_disposed ||
+        (_status == MqttConnectionStatus.connected && _client != null)) {
+      return;
+    }
     _manualDisconnect = false;
 
-    if (!_config.isConfigured && !_credentialsLoaded) {
-      _credentialsLoaded = true;
-      final saved = await _credentialsStore.read();
-      if (saved != null) _config = saved;
-    }
+    await loadMqttConfig();
 
     if (!_config.isConfigured) {
       _setStatus(MqttConnectionStatus.notConfigured);
@@ -110,9 +129,20 @@ class MqttService {
     _config = config;
     _manualDisconnect = false;
     _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _reconnectAttempt = 0;
-    _updatesSubscription?.cancel();
-    _client?.disconnect();
+
+    // A disconnect callback can arrive after a replacement client has been
+    // created. Clear ownership before disconnecting so that the callback is
+    // ignored as stale rather than scheduling a second, competing reconnect.
+    final previousUpdates = _updatesSubscription;
+    _updatesSubscription = null;
+    if (previousUpdates != null) {
+      unawaited(previousUpdates.cancel());
+    }
+    final previousClient = _client;
+    _client = null;
+    previousClient?.disconnect();
     await _attemptConnect();
   }
 
@@ -139,44 +169,39 @@ class MqttService {
       return isAuthFailure
           ? MqttConnectionStatus.authenticationFailure
           : MqttConnectionStatus.networkFailure;
-    } on HandshakeException {
-      return MqttConnectionStatus.tlsFailure;
     } catch (_) {
       return MqttConnectionStatus.networkFailure;
     }
   }
 
-  MqttServerClient _buildClient(MqttConfig config, String clientId) {
-    final client = MqttServerClient.withPort(
-      config.host,
-      clientId,
-      config.port,
-    );
-    client.secure = config.useTls;
-    client.keepAlivePeriod = 30;
-    client.autoReconnect = false;
-    client.setProtocolV311();
-    client.connectionMessage = MqttConnectMessage()
-        .withClientIdentifier(clientId)
-        .startClean()
-        .withWillQos(MqttQos.atMostOnce);
-    return client;
-  }
+  MqttClient _buildClient(MqttConfig config, String clientId) =>
+      buildPlatformMqttClient(config, clientId);
 
   Future<void> _attemptConnect() async {
+    if (_disposed) return;
     _setStatus(MqttConnectionStatus.connecting);
 
     final clientId =
         'kilowatts-mobile-${Random().nextInt(0xFFFFFFF).toRadixString(16)}';
     final client = _buildClient(_config, clientId);
-    client.onDisconnected = _handleDisconnected;
+    client.onDisconnected = () => _handleDisconnected(client);
 
     _client = client;
 
     try {
       final status = await client.connect(_config.username, _config.password);
 
+      // A save/reconnect can replace this client while connect() is still
+      // awaiting a browser or TCP handshake. That older attempt must not
+      // overwrite the newer connection's status or subscriptions.
+      if (_disposed || !identical(_client, client)) {
+        client.disconnect();
+        return;
+      }
+
       if (status?.state != MqttConnectionState.connected) {
+        _client = null;
+        client.disconnect();
         _handleConnectFailure(status?.returnCode);
         return;
       }
@@ -185,13 +210,10 @@ class MqttService {
       _setStatus(MqttConnectionStatus.connected);
       _subscribeToTopics(client);
       _updatesSubscription = client.updates?.listen(_handleIncomingMessages);
-    } on HandshakeException {
-      _setStatus(MqttConnectionStatus.tlsFailure);
-      _scheduleReconnect();
-    } on SocketException {
-      _setStatus(MqttConnectionStatus.networkFailure);
-      _scheduleReconnect();
     } catch (_) {
+      if (_disposed || !identical(_client, client)) return;
+      _client = null;
+      client.disconnect();
       _setStatus(MqttConnectionStatus.networkFailure);
       _scheduleReconnect();
     }
@@ -212,8 +234,15 @@ class MqttService {
     }
   }
 
-  void _handleDisconnected() {
-    _updatesSubscription?.cancel();
+  void _handleDisconnected(MqttClient disconnectedClient) {
+    if (_disposed || !identical(_client, disconnectedClient)) return;
+
+    final updates = _updatesSubscription;
+    _updatesSubscription = null;
+    if (updates != null) {
+      unawaited(updates.cancel());
+    }
+    _client = null;
     if (_manualDisconnect) {
       _setStatus(MqttConnectionStatus.disconnected);
       return;
@@ -223,7 +252,7 @@ class MqttService {
   }
 
   void _scheduleReconnect() {
-    if (_manualDisconnect) return;
+    if (_disposed || _manualDisconnect) return;
     _reconnectTimer?.cancel();
     _reconnectAttempt++;
     final delaySeconds = min(
@@ -235,8 +264,10 @@ class MqttService {
     _reconnectTimer = Timer(Duration(seconds: delaySeconds), _attemptConnect);
   }
 
-  void _subscribeToTopics(MqttServerClient client) {
-    for (final topic in MqttTopics.subscriptions) {
+  MqttTopics get _topics => MqttTopics(_config.topicNamespace);
+
+  void _subscribeToTopics(MqttClient client) {
+    for (final topic in _topics.subscriptions) {
       client.subscribe(topic, MqttQos.atLeastOnce);
     }
   }
@@ -263,40 +294,67 @@ class MqttService {
   }
 
   void _routeMessage(String topic, Map<String, dynamic> payload) {
-    switch (topic) {
-      case MqttTopics.stateSystem:
-        final state = SystemStateModel.fromJson(payload);
-        _systemStateController.add(state);
-        cache?.cacheSystemState(payload);
-      case MqttTopics.stateTree:
-        _topologyController.add(TopologyModel.fromJson(payload));
-      case MqttTopics.stateLoads:
-        final loadsJson =
-            (payload['loads'] as List?)
-                ?.whereType<Map>()
-                .map((e) => e.cast<String, dynamic>())
-                .toList() ??
-            const [];
-        final loads = loadsJson.map(LoadModel.fromJson).toList();
-        _loadsController.add(loads);
-        cache?.cacheLoads(loadsJson);
-      case MqttTopics.events:
-        _alertController.add(AlertModel.fromJson(payload));
-      case MqttTopics.acks:
-        _resolveAck(payload);
+    if (topic == _topics.stateSystem) {
+      final state = SystemStateModel.fromJson(payload);
+      _systemStateController.add(state);
+      cache?.cacheSystemState(payload);
+      return;
+    }
+    if (topic == _topics.stateTree) {
+      _topologyController.add(TopologyModel.fromJson(payload));
+      return;
+    }
+    if (topic == _topics.stateLoads) {
+      final loadsJson =
+          (payload['loads'] as List?)
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
+      final loads = loadsJson.map(LoadModel.fromJson).toList();
+      _loadsController.add(loads);
+      cache?.cacheLoads(loadsJson);
+      return;
+    }
+    if (topic == _topics.configNodes) {
+      final nodes =
+          (payload['nodes'] as List?)
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .map(InstallerNodeModel.fromJson)
+              .toList(growable: false) ??
+          const <InstallerNodeModel>[];
+      _installerNodesController.add(nodes);
+      return;
+    }
+    if (topic == _topics.events) {
+      _alertController.add(AlertModel.fromJson(payload));
+      return;
+    }
+    if (topic == _topics.acks) {
+      _resolveAck(payload);
     }
   }
 
   void _resolveAck(Map<String, dynamic> payload) {
     final id = payload['commandId']?.toString();
     if (id == null) return;
-    final completer = _pendingCommands.remove(id);
+    final completer = _pendingCommands[id];
     if (completer == null || completer.isCompleted) return;
 
-    final accepted = payload['accepted'] == true;
+    final status = payload['status']?.toString().toUpperCase();
+
+    // Config commands travel in two phases. ACCEPTED means Central has
+    // dispatched it, not that a remote Smart Node has actually changed
+    // hardware. Wait for APPLIED or FAILED for the same command ID.
+    if (status == 'ACCEPTED') return;
+
+    _pendingCommands.remove(id);
+    final accepted =
+        status == 'APPLIED' || (status == null && payload['accepted'] == true);
     completer.complete(
       accepted
-          ? const CommandOutcome.confirmed()
+          ? CommandOutcome.confirmed(payload['reason']?.toString())
           : CommandOutcome.failed(
               payload['reason']?.toString() ?? 'Command rejected',
             ),
@@ -304,10 +362,20 @@ class MqttService {
   }
 
   /// Firmware parses `commandId` as a plain JSON number (`cJSON_IsNumber`),
-  /// so this must never be sent as a quoted string. A monotonic counter is
-  /// sufficient uniqueness for one app session's in-flight commands.
-  int _commandIdCounter = 0;
-  int _nextCommandId() => ++_commandIdCounter;
+  /// so this must never be sent as a quoted string.
+  final Random _commandIdRandom = Random.secure();
+
+  /// Command IDs are intentionally unpredictable rather than a per-app
+  /// counter. Multiple phones and the installer portal can be connected at
+  /// the same time, so a fresh app session must not accidentally accept a
+  /// different client's acknowledgement with the same small counter value.
+  int _nextCommandId() {
+    var commandId = 0;
+    do {
+      commandId = _commandIdRandom.nextInt(0x7fffffff) + 1;
+    } while (_pendingCommands.containsKey(commandId.toString()));
+    return commandId;
+  }
 
   Future<CommandOutcome> sendLoadCommand({
     required String nodeMac,
@@ -324,7 +392,7 @@ class MqttService {
       'relayPin': relayPin,
       if (mode != null && requestedState != null)
         'mode': _wireMode(mode, requestedState),
-      'priority': ?priority,
+      if (priority != null) 'priority': priority,
       if (schedule != null)
         'schedule': {
           'enabled': schedule.enabled,
@@ -332,7 +400,7 @@ class MqttService {
           'minute': schedule.minute ?? 0,
         },
     };
-    return _publishCommand(MqttTopics.commandsLoad, commandId, payload);
+    return _publishCommand(_topics.commandsLoad, commandId, payload);
   }
 
   String _wireMode(LoadMode mode, bool on) {
@@ -342,14 +410,8 @@ class MqttService {
     return on ? 'AUTO_ON' : 'AUTO_OFF';
   }
 
-  /// Publishes to the documented `commands/system` topic as an
-  /// `APPLY_SAFETY_CONFIG` action. Firmware does not currently recognise
-  /// this action (only `REQUEST_OPTIMIZATION_CYCLE` exists today) — the
-  /// broker will honestly reply with `accepted:false, reason:"unrecognised
-  /// action"` until firmware adds support. This is left wired up (rather
-  /// than removed) so the UI already works the moment firmware catches up;
-  /// callers must not treat the returned [CommandOutcome] as proof the
-  /// setting took effect.
+  /// Applies Central's persisted electrical safety policy. The caller only
+  /// receives a confirmed outcome after the Central replies APPLIED.
   Future<CommandOutcome> sendSafetyConfig(SafetyConfigDraft draft) {
     final commandId = _nextCommandId();
     final payload = <String, dynamic>{
@@ -364,7 +426,80 @@ class MqttService {
         'maximumMainCurrentAmps': draft.mainCurrentLimitA,
       },
     };
-    return _publishCommand(MqttTopics.commandsSystem, commandId, payload);
+    return _publishCommand(_topics.commandsSystem, commandId, payload);
+  }
+
+  Future<CommandOutcome> commissionNode({
+    required String nodeMac,
+    required String friendlyName,
+  }) {
+    return _sendConfigCommand({
+      'action': 'COMMISSION_NODE',
+      'nodeMac': nodeMac,
+      'friendlyName': friendlyName,
+    });
+  }
+
+  Future<CommandOutcome> renameNode({
+    required String nodeMac,
+    required String friendlyName,
+  }) {
+    return _sendConfigCommand({
+      'action': 'RENAME_NODE',
+      'nodeMac': nodeMac,
+      'friendlyName': friendlyName,
+    });
+  }
+
+  /// Removes the Node from Central's authoritative installation record.
+  /// A confirmed result means Central durably decommissioned it; the result
+  /// message explains whether the best-effort Smart-Node reset notification
+  /// could also be sent over ESP-NOW.
+  Future<CommandOutcome> decommissionNode({required String nodeMac}) {
+    return _sendConfigCommand({
+      'action': 'DECOMMISSION_NODE',
+      'nodeMac': nodeMac,
+    });
+  }
+
+  Future<CommandOutcome> configureLoad(
+    InstallerLoadConfiguration configuration,
+  ) {
+    return _sendConfigCommand({
+      'action': 'CONFIGURE_LOAD',
+      ...configuration.toCommandPayload(),
+    });
+  }
+
+  Future<CommandOutcome> configureBatterySensor({
+    required String centralNodeMac,
+    required int i2cAddress,
+    required double shuntResistanceOhms,
+    required double maximumExpectedCurrentAmps,
+    required double emaAlpha,
+    required double batteryCapacityAmpHours,
+    required double initialStateOfChargePercent,
+  }) {
+    return _sendConfigCommand({
+      'action': 'CONFIGURE_BATTERY_SENSOR',
+      'nodeMac': centralNodeMac,
+      'batterySensor': {
+        'i2cAddress': i2cAddress,
+        'shuntResistanceOhms': shuntResistanceOhms,
+        'maximumExpectedCurrentAmps': maximumExpectedCurrentAmps,
+        'emaAlpha': emaAlpha,
+        'batteryCapacityAmpHours': batteryCapacityAmpHours,
+        'initialStateOfChargePercent': initialStateOfChargePercent,
+      },
+    });
+  }
+
+  Future<CommandOutcome> _sendConfigCommand(Map<String, dynamic> payload) {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.commandsConfig, commandId, {
+      'commandId': commandId,
+      ...payload,
+    });
   }
 
   Future<CommandOutcome> _publishCommand(
@@ -396,6 +531,7 @@ class MqttService {
   }
 
   void _setStatus(MqttConnectionStatus status) {
+    if (_disposed) return;
     _status = status;
     _statusController.add(status);
   }
@@ -403,18 +539,36 @@ class MqttService {
   Future<void> disconnect() async {
     _manualDisconnect = true;
     _reconnectTimer?.cancel();
-    _client?.disconnect();
+    _reconnectTimer = null;
+    final updates = _updatesSubscription;
+    _updatesSubscription = null;
+    if (updates != null) {
+      await updates.cancel();
+    }
+    final client = _client;
+    _client = null;
+    client?.disconnect();
+    _setStatus(MqttConnectionStatus.disconnected);
   }
 
   void dispose() {
+    _disposed = true;
     _manualDisconnect = true;
     _reconnectTimer?.cancel();
-    _updatesSubscription?.cancel();
-    _client?.disconnect();
+    _reconnectTimer = null;
+    final updates = _updatesSubscription;
+    _updatesSubscription = null;
+    if (updates != null) {
+      unawaited(updates.cancel());
+    }
+    final client = _client;
+    _client = null;
+    client?.disconnect();
     _statusController.close();
     _systemStateController.close();
     _topologyController.close();
     _loadsController.close();
     _alertController.close();
+    _installerNodesController.close();
   }
 }

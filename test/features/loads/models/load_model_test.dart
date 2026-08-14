@@ -21,11 +21,13 @@ Map<String, dynamic> _wireLoad({
     'confirmedOn': confirmedOn,
     'confirmedStateValid': confirmedStateValid,
     'priority': 7,
-    'runningWatts': 6.0,
+    // Smart Nodes do not measure individual loads.  These are the
+    // installer-entered electrical ratings emitted by `TopologyTree`.
+    'nominalVoltageVolts': 12.0,
+    'nominalCurrentAmps': 0.5,
+    'nominalPowerWatts': 6.0,
     'startupWatts': 9.0,
-    'measuredVoltageVolts': 12.4,
-    'measuredCurrentAmps': 0.5,
-    'measuredPowerWatts': 6.2,
+    'perLoadMeasurementAvailable': false,
     'scheduleEnabled': true,
     'scheduleHour': 6,
     'scheduleMinute': 30,
@@ -52,8 +54,9 @@ void main() {
       expect(load.schedule.enabled, true);
       expect(load.schedule.hour, 6);
       expect(load.schedule.minute, 30);
-      expect(load.currentPowerW, 6.2);
-      expect(load.runningPowerW, 6.0);
+      expect(load.ratedVoltageV, 12.0);
+      expect(load.ratedCurrentA, 0.5);
+      expect(load.plannedPowerW, 6.0);
       expect(load.startupPowerW, 9.0);
       expect(load.id, 'AA:BB:CC:DD:EE:FF:26');
     });

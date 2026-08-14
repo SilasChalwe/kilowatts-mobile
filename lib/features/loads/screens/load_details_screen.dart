@@ -40,6 +40,8 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
       nodeMac: widget.load.owningNodeMac,
       relayPin: widget.load.relayPin,
       mode: _mode,
+      currentRequestedState:
+          widget.load.requestedState ?? widget.load.confirmedState ?? false,
       priority: _priority,
       schedule: _schedule,
     );
@@ -110,20 +112,34 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 SectionCard(
-                  title: 'Power',
+                  title: 'Planning Rating',
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SectionRow(
-                        label: 'Current Power',
-                        value: Formatters.power(load.currentPowerW),
+                        label: 'Planned Running Power',
+                        value: Formatters.power(load.plannedPowerW),
                       ),
                       SectionRow(
-                        label: 'Running Power',
-                        value: Formatters.power(load.runningPowerW),
+                        label: 'Rated Voltage',
+                        value: load.ratedVoltageV == null
+                            ? 'Unavailable'
+                            : '${load.ratedVoltageV!.toStringAsFixed(1)} V',
+                      ),
+                      SectionRow(
+                        label: 'Rated Current',
+                        value: load.ratedCurrentA == null
+                            ? 'Unavailable'
+                            : '${load.ratedCurrentA!.toStringAsFixed(2)} A',
                       ),
                       SectionRow(
                         label: 'Startup Power',
                         value: Formatters.power(load.startupPowerW),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      const Text(
+                        'These are installer ratings used for planning. This system does not measure individual load consumption live.',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                       ),
                     ],
                   ),

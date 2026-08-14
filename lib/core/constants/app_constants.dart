@@ -4,19 +4,28 @@
 /// and subscribes to. Field names inside each payload are treated
 /// defensively (see `core/utils/json_parsing.dart`) since the firmware
 /// contract is still evolving.
-abstract final class MqttTopics {
-  static const String stateSystem = 'kilowatts/v1/state/system';
-  static const String stateTree = 'kilowatts/v1/state/tree';
-  static const String stateLoads = 'kilowatts/v1/state/loads';
-  static const String events = 'kilowatts/v1/events';
-  static const String commandsLoad = 'kilowatts/v1/commands/load';
-  static const String commandsSystem = 'kilowatts/v1/commands/system';
-  static const String acks = 'kilowatts/v1/acks';
+class MqttTopics {
+  const MqttTopics(this.namespace);
 
-  static const List<String> subscriptions = [
+  final String namespace;
+
+  String get stateSystem => '$namespace/state/system';
+  String get stateTree => '$namespace/state/tree';
+  String get stateLoads => '$namespace/state/loads';
+  String get stateNodes => '$namespace/state/nodes';
+  String get configNodes => '$namespace/config/nodes';
+  String get events => '$namespace/events';
+  String get commandsLoad => '$namespace/commands/load';
+  String get commandsSystem => '$namespace/commands/system';
+  String get commandsConfig => '$namespace/commands/config';
+  String get acks => '$namespace/acks';
+
+  List<String> get subscriptions => [
     stateSystem,
     stateTree,
     stateLoads,
+    stateNodes,
+    configNodes,
     events,
     acks,
   ];

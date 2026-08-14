@@ -11,11 +11,13 @@ class ErrorState extends StatelessWidget {
     super.key,
     this.message,
     this.onRetry,
+    this.actionLabel = 'Retry',
   });
 
   final String title;
   final String? message;
   final VoidCallback? onRetry;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +46,7 @@ class ErrorState extends StatelessWidget {
               const SizedBox(height: AppSpacing.md),
               SizedBox(
                 width: 160,
-                child: SecondaryButton(label: 'Retry', onPressed: onRetry),
+                child: SecondaryButton(label: actionLabel, onPressed: onRetry),
               ),
             ],
           ],

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../features/admin/models/installer_node_model.dart';
 import '../../features/alerts/models/alert_model.dart';
+import '../../features/auth/data/access_control_service.dart';
 import '../../features/auth/data/auth_service.dart';
 import '../../features/loads/models/load_model.dart';
 import '../../features/setup/models/setup_session.dart';
@@ -35,8 +37,10 @@ class AppState {
     required this.authService,
     required MqttService mqttService,
     required LocalStateService localStateService,
+    AccessControlService? accessControlService,
   }) : _mqtt = mqttService,
-       _localState = localStateService {
+       _localState = localStateService,
+       _accessControlService = accessControlService ?? AccessControlService() {
     _wireMqttSubscriptions();
     unawaited(_loadCachedSnapshot());
   }
@@ -44,6 +48,7 @@ class AppState {
   final AuthService authService;
   final MqttService _mqtt;
   final LocalStateService _localState;
+  final AccessControlService _accessControlService;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
   // ── Connection & system state ────────────────────────────────────────
@@ -55,6 +60,9 @@ class AppState {
   final ValueNotifier<TopologyModel?> topology = ValueNotifier(null);
   final ValueNotifier<List<LoadModel>> loads = ValueNotifier(const []);
   final ValueNotifier<List<AlertModel>> alerts = ValueNotifier(const []);
+  final ValueNotifier<List<InstallerNodeModel>> installerNodes = ValueNotifier(
+    const [],
+  );
 
   // Session-only trend samples, derived from [systemState] so Battery and
   // History screens share one accumulation instead of each sampling the
@@ -104,6 +112,9 @@ class AppState {
             : next;
       }),
     );
+    _subscriptions.add(
+      _mqtt.installerNodesStream.listen((nodes) => installerNodes.value = nodes),
+    );
   }
 
   void _appendSample(ValueNotifier<List<double>> notifier, double? value) {
@@ -125,6 +136,8 @@ class AppState {
   Future<void> connectMqtt() => _mqtt.connect();
 
   MqttConfig get mqttConfig => _mqtt.currentConfig;
+
+  Future<MqttConfig> loadMqttConfig() => _mqtt.loadMqttConfig();
 
   Future<MqttConnectionStatus> testMqttConnection(MqttConfig config) =>
       _mqtt.testConnection(config);
@@ -150,6 +163,7 @@ class AppState {
     required String nodeMac,
     required int relayPin,
     LoadMode? mode,
+    bool? currentRequestedState,
     int? priority,
     LoadSchedule? schedule,
   }) {
@@ -157,6 +171,7 @@ class AppState {
       nodeMac: nodeMac,
       relayPin: relayPin,
       mode: mode,
+      requestedState: currentRequestedState,
       priority: priority,
       schedule: schedule,
     );
@@ -164,6 +179,41 @@ class AppState {
 
   Future<CommandOutcome> applySafetyConfig(SafetyConfigDraft draft) =>
       _mqtt.sendSafetyConfig(draft);
+
+  Future<CommandOutcome> commissionNode({
+    required String nodeMac,
+    required String friendlyName,
+  }) => _mqtt.commissionNode(nodeMac: nodeMac, friendlyName: friendlyName);
+
+  Future<CommandOutcome> renameNode({
+    required String nodeMac,
+    required String friendlyName,
+  }) => _mqtt.renameNode(nodeMac: nodeMac, friendlyName: friendlyName);
+
+  Future<CommandOutcome> decommissionNode({required String nodeMac}) =>
+      _mqtt.decommissionNode(nodeMac: nodeMac);
+
+  Future<CommandOutcome> configureLoad(
+    InstallerLoadConfiguration configuration,
+  ) => _mqtt.configureLoad(configuration);
+
+  Future<CommandOutcome> configureBatterySensor({
+    required String centralNodeMac,
+    required int i2cAddress,
+    required double shuntResistanceOhms,
+    required double maximumExpectedCurrentAmps,
+    required double emaAlpha,
+    required double batteryCapacityAmpHours,
+    required double initialStateOfChargePercent,
+  }) => _mqtt.configureBatterySensor(
+    centralNodeMac: centralNodeMac,
+    i2cAddress: i2cAddress,
+    shuntResistanceOhms: shuntResistanceOhms,
+    maximumExpectedCurrentAmps: maximumExpectedCurrentAmps,
+    emaAlpha: emaAlpha,
+    batteryCapacityAmpHours: batteryCapacityAmpHours,
+    initialStateOfChargePercent: initialStateOfChargePercent,
+  );
 
   void acknowledgeAllAlerts() {
     alerts.value = [
@@ -185,6 +235,9 @@ class AppState {
   User? get currentUser => authService.currentUser;
   Future<void> signOut() => authService.signOut();
 
+  Future<InstallationAccess> resolveCurrentAccess() =>
+      _accessControlService.resolve(currentUser);
+
   void dispose() {
     for (final subscription in _subscriptions) {
       subscription.cancel();
@@ -196,6 +249,7 @@ class AppState {
     topology.dispose();
     loads.dispose();
     alerts.dispose();
+    installerNodes.dispose();
     socSamples.dispose();
     batteryPowerSamples.dispose();
     committedPowerSamples.dispose();

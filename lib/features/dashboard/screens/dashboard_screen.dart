@@ -8,6 +8,7 @@ import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/live_status_badge.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../system/models/topology_model.dart';
+import '../../settings/screens/system_connection_settings_screen.dart';
 import '../widgets/battery_summary.dart';
 import '../widgets/load_summary.dart';
 import '../widgets/power_summary.dart';
@@ -36,6 +37,19 @@ class DashboardScreen extends StatelessWidget {
         final connectionStatus = appState.connectionStatus.value;
 
         if (state == null) {
+          if (connectionStatus == MqttConnectionStatus.notConfigured) {
+            return ErrorState(
+              title: 'Connect your system',
+              message:
+                  'Set up this phone using the broker details supplied by your installer.',
+              actionLabel: 'Set up connection',
+              onRetry: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SystemConnectionSettingsScreen(),
+                ),
+              ),
+            );
+          }
           if (connectionStatus == MqttConnectionStatus.connecting ||
               connectionStatus == MqttConnectionStatus.reconnecting) {
             return const LoadingIndicator(

@@ -1,4 +1,13 @@
-# kilowatts_mobile
+# Kilowatts Mobile
+
+This repository contains the homeowner Flutter mobile app and the
+installer-only Flutter Web console.
+
+Release builds must use a private Android upload key. Copy
+`android/key.properties.example` to `android/key.properties`, set the real
+keystore values, and keep both the completed properties file and the
+keystore outside version control. Without it, a release artifact is unsigned
+by design rather than being signed with a shared debug key.
 
 A new Flutter project.
 

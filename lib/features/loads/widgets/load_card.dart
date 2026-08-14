@@ -42,7 +42,7 @@ class LoadCard extends StatelessWidget {
                     Text(load.name, style: AppTextStyles.label),
                     const SizedBox(height: 2),
                     Text(
-                      '${load.owningNodeName ?? load.owningNodeMac} · ${Formatters.power(load.currentPowerW)}',
+                      '${load.owningNodeName ?? load.owningNodeMac} · ${Formatters.power(load.plannedPowerW)} planned',
                       style: AppTextStyles.caption,
                     ),
                   ],

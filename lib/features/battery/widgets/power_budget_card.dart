@@ -29,8 +29,8 @@ class PowerBudgetCard extends StatelessWidget {
           value: Formatters.power(state.remainingPowerW),
         ),
         MetricCard(
-          label: 'Measured Load Power',
-          value: Formatters.power(state.measuredTotalLoadPowerW),
+          label: 'Estimated Load Demand',
+          value: Formatters.power(state.estimatedTotalLoadPowerW),
         ),
         MetricCard(
           label: 'Committed Power',
