@@ -1,1 +1,31 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"kilowatts-covianhive-22177295","appId":"1:889763140910:android:973a383adf73ffe26a96bf","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"kilowatts-covianhive-22177295","configurations":{"android":"1:889763140910:android:973a383adf73ffe26a96bf"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "kilowatts-covianhive-22177295",
+          "appId": "1:889763140910:android:973a383adf73ffe26a96bf",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "web": {
+        "default": {
+          "projectId": "kilowatts-covianhive-22177295",
+          "appId": "1:889763140910:web:1b6b9b0b02b041756a96bf"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "kilowatts-covianhive-22177295",
+          "configurations": {
+            "android": "1:889763140910:android:973a383adf73ffe26a96bf",
+            "web": "1:889763140910:web:1b6b9b0b02b041756a96bf"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

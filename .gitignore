@@ -48,3 +48,14 @@ app.*.map.json
 /android/key.properties
 /android/*.jks
 /android/*.keystore
+
+# Node (Cloud Functions) and any credential material that must never be
+# committed — service account keys should only ever live outside the repo.
+node_modules/
+.env
+.env.*
+.runtimeconfig.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+*.pem
+*.p12

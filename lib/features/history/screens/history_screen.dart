@@ -6,7 +6,6 @@ import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/trend_chart_card.dart';
 import '../../alerts/models/alert_model.dart';
 import '../../alerts/widgets/alert_card.dart';
-import '../widgets/history_chart.dart';
 
 /// Everything here is built from samples/events accumulated centrally in
 /// [AppState] during this app session — there is no historical reporting
@@ -52,11 +51,6 @@ class HistoryScreen extends StatelessWidget {
                             title: 'Power Usage Trend',
                             values: powerSamples,
                             caption: 'Committed power (W), this session',
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          const HistoryChart(
-                            title: 'Daily Energy Summary',
-                            entries: [],
                           ),
                         ],
                       );

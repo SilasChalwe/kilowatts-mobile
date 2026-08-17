@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
-import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/error_state.dart';
-import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/trend_chart_card.dart';
 import '../../system/models/system_state_model.dart';
 import '../widgets/power_budget_card.dart';
@@ -28,19 +26,11 @@ class BatteryPowerScreen extends StatelessWidget {
           valueListenable: appState.systemState,
           builder: (context, state, _) {
             if (state == null) {
-              return ValueListenableBuilder<MqttConnectionStatus>(
-                valueListenable: appState.connectionStatus,
-                builder: (context, status, _) {
-                  return status == MqttConnectionStatus.connected
-                      ? const LoadingIndicator(
-                          message: 'Waiting for battery telemetry…',
-                        )
-                      : ErrorState(
-                          title: 'System Unavailable',
-                          message: 'Reconnect to see battery and power data.',
-                          onRetry: appState.connectMqtt,
-                        );
-                },
+              return ErrorState(
+                title: 'No Battery Data Yet',
+                message:
+                    'Central has not reported battery telemetry yet. Check that it is powered on and connected.',
+                onRetry: appState.connectMqtt,
               );
             }
 

@@ -2,9 +2,12 @@ import '../../../core/utils/json_parsing.dart';
 import '../../loads/models/load_model.dart';
 
 /// The installer-facing identity/configuration view published on
-/// `config/nodes`. It is intentionally distinct from the homeowner
-/// topology model: it exposes hardware capabilities and commissioning
-/// lifecycle, not just a friendly network tree.
+/// `state/nodes` (a superset of the older `config/nodes` shape: same
+/// identity/capability fields, plus live `online`/`hopCountToCentral`/
+/// `nextHopMac`/`lastSeenMilliseconds` — see
+/// NodeRegistryJson::buildStateNodesJson). It is intentionally distinct
+/// from the homeowner topology model: it exposes hardware capabilities and
+/// commissioning lifecycle, not just a friendly network tree.
 class InstallerNodeModel {
   const InstallerNodeModel({
     required this.mac,
@@ -15,6 +18,10 @@ class InstallerNodeModel {
     this.firmwareVersion,
     this.chipModel,
     this.availableRelayPins = const [],
+    this.online,
+    this.hopCountToCentral,
+    this.nextHopMac,
+    this.lastSeenMillisecondsSinceBoot,
   });
 
   final String mac;
@@ -29,7 +36,20 @@ class InstallerNodeModel {
   /// offer pins in this list; it never guesses that a physical pin is safe.
   final List<int> availableRelayPins;
 
+  /// Null when this node has never actually reported into
+  /// CentralNodeRegistry yet (known to commissioning only) — shown as
+  /// "Unavailable", never assumed offline.
+  final bool? online;
+  final int? hopCountToCentral;
+  final String? nextHopMac;
+
+  /// Milliseconds since Central's own boot (FreeRTOS tick count), not a
+  /// wall-clock epoch — only meaningful compared against another reading
+  /// from the same boot. Prefer [online] for a simple status display.
+  final int? lastSeenMillisecondsSinceBoot;
+
   bool get isSmartNode => role == 'SMART';
+  bool get isCentralNode => role == 'CENTRAL';
   bool get isCommissioned =>
       lifecycleState == 'COMMISSIONED' || lifecycleState == 'OPERATIONAL';
   bool get canBeCommissioned =>
@@ -59,6 +79,10 @@ class InstallerNodeModel {
                 .whereType<int>()
                 .toList(growable: false)
           : const [],
+      online: json.boolOrNull('online'),
+      hopCountToCentral: json.intOrNull('hopCountToCentral'),
+      nextHopMac: json.stringOrNull('nextHopMac'),
+      lastSeenMillisecondsSinceBoot: json.intOrNull('lastSeenMilliseconds'),
     );
   }
 }

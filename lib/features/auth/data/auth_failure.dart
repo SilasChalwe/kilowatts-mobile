@@ -23,7 +23,7 @@ abstract final class AuthFailure {
       case 'weak-password':
         return 'Choose a stronger password.';
       case 'operation-not-allowed':
-        return 'Email and password sign-in is not enabled for this Firebase project.';
+        return 'Email and password sign-in is not enabled for this app.';
       case 'invalid-credential':
       case 'wrong-password':
       case 'user-not-found':

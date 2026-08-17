@@ -12,37 +12,63 @@ class PowerBudgetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppSpacing.sm,
-      crossAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 2.2,
+    return Column(
       children: [
-        MetricCard(
-          label: 'Available Power',
-          value: Formatters.power(state.availablePowerW),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: MetricCard(
+                label: 'Available Power',
+                value: Formatters.power(state.availablePowerW),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: MetricCard(
+                label: 'Remaining Power',
+                value: Formatters.power(state.remainingPowerW),
+              ),
+            ),
+          ],
         ),
-        MetricCard(
-          label: 'Remaining Power',
-          value: Formatters.power(state.remainingPowerW),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: MetricCard(
+                label: 'Estimated Load Demand',
+                value: Formatters.power(state.estimatedTotalLoadPowerW),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: MetricCard(
+                label: 'Committed Power',
+                value: Formatters.power(state.committedPowerW),
+              ),
+            ),
+          ],
         ),
-        MetricCard(
-          label: 'Estimated Load Demand',
-          value: Formatters.power(state.estimatedTotalLoadPowerW),
-        ),
-        MetricCard(
-          label: 'Committed Power',
-          value: Formatters.power(state.committedPowerW),
-        ),
-        MetricCard(
-          label: 'Fixed Loads',
-          value: Formatters.power(state.fixedLoadPowerW),
-        ),
-        MetricCard(
-          label: 'Auto Loads',
-          value: Formatters.power(state.autoLoadPowerW),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: MetricCard(
+                label: 'Fixed Loads',
+                value: Formatters.power(state.fixedLoadPowerW),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: MetricCard(
+                label: 'Auto Loads',
+                value: Formatters.power(state.autoLoadPowerW),
+              ),
+            ),
+          ],
         ),
       ],
     );

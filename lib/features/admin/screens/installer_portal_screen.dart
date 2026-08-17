@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
@@ -8,13 +9,18 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/confirmation_dialog.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/secondary_button.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../models/installer_node_model.dart';
+import '../../alerts/models/alert_model.dart';
+import '../../alerts/widgets/alert_card.dart';
 import '../../loads/models/load_model.dart';
 import '../../setup/models/setup_session.dart';
+import '../../system/screens/system_topology_screen.dart';
 
 /// Flutter Web's installer-only cockpit. It is deliberately not part of the
 /// mobile navigation: homeowner controls remain limited to monitoring,
@@ -32,22 +38,24 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
     _PortalDestination('Overview', Icons.space_dashboard_outlined),
     _PortalDestination('Connection', Icons.hub_outlined),
     _PortalDestination('Nodes & loads', Icons.account_tree_outlined),
+    _PortalDestination('Topology', Icons.device_hub_outlined),
+    _PortalDestination('Activity log', Icons.receipt_long_outlined),
     _PortalDestination('Safety policy', Icons.shield_outlined),
+    _PortalDestination('Team access', Icons.admin_panel_settings_outlined),
   ];
 
   final _connectionFormKey = GlobalKey<FormState>();
   final _hostController = TextEditingController();
   final _portController = TextEditingController(text: '8884');
   final _webSocketPathController = TextEditingController(text: '/mqtt');
-  final _topicNamespaceController = TextEditingController(
-    text: 'kilowatts/v1',
-  );
+  final _topicNamespaceController = TextEditingController(text: 'kilowatts/v1');
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   String? _savedPassword;
   bool _useTls = true;
   bool _savingConnection = false;
   bool _testingConnection = false;
+  bool _togglingDevelopmentSession = false;
   int _selectedIndex = 0;
   bool _didInitialize = false;
 
@@ -143,6 +151,49 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
     );
   }
 
+  /// Starts or ends Central's Development Session — the only thing that
+  /// switches the whole installation's Operating Environment between
+  /// PRODUCTION and DEVELOPMENT (see [DevelopmentModeBadge], which is what
+  /// the homeowner app shows as a result). Confirmed first since starting a
+  /// session means every reading published afterwards is simulated, not
+  /// real hardware, until explicitly ended.
+  Future<void> _toggleDevelopmentSession(
+    String centralNodeMac,
+    bool start,
+  ) async {
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: start ? 'Start Development Session?' : 'End Development Session?',
+      message: start
+          ? 'Switch to DEVELOPMENT mode?'
+          : 'Switch to PRODUCTION mode?',
+      confirmLabel: start ? 'Start session' : 'End session',
+      isDestructive: !start,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _togglingDevelopmentSession = true);
+    final outcome = await AppStateScope.of(
+      context,
+    ).setDevelopmentSession(centralNodeMac: centralNodeMac, start: start);
+    if (!mounted) return;
+    setState(() => _togglingDevelopmentSession = false);
+    _showMessage(
+      outcome.status == CommandStatus.confirmed
+          ? (start
+                ? 'Development Session started.'
+                : 'Development Session ended.')
+          : outcome.message ?? 'Central rejected the request.',
+    );
+  }
+
+  InstallerNodeModel? _findCentralNode(List<InstallerNodeModel> nodes) {
+    for (final node in nodes) {
+      if (node.isCentralNode) return node;
+    }
+    return null;
+  }
+
   void _showMessage(String text) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -207,7 +258,8 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
               extended: true,
               minExtendedWidth: 250,
               selectedIndex: _selectedIndex,
-              onDestinationSelected: (value) => setState(() => _selectedIndex = value),
+              onDestinationSelected: (value) =>
+                  setState(() => _selectedIndex = value),
               destinations: [
                 for (final item in _destinations)
                   NavigationRailDestination(
@@ -265,10 +317,51 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
       case 2:
         return _nodesPage();
       case 3:
+        return const SystemTopologyScreen();
+      case 4:
+        return _activityLogPage();
+      case 5:
         return _safetyPage();
+      case 6:
+        return _accessPage();
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _activityLogPage() {
+    final appState = AppStateScope.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Activity log', style: AppTextStyles.display),
+          const SizedBox(height: AppSpacing.lg),
+          Expanded(
+            child: ValueListenableBuilder<List<AlertModel>>(
+              valueListenable: appState.alerts,
+              builder: (context, alerts, _) {
+                if (alerts.isEmpty) {
+                  return const EmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'No Activity Yet',
+                    message: 'System events will appear here as they happen.',
+                  );
+                }
+                return ListView.separated(
+                  itemCount: alerts.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.xs),
+                  itemBuilder: (context, index) =>
+                      AlertCard(alert: alerts[index]),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _overviewPage() {
@@ -281,36 +374,144 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
           'Live broker status, discovered hardware and commissioning progress.',
           style: AppTextStyles.subtitle,
         ),
-        const SizedBox(height: AppSpacing.lg),
-        ValueListenableBuilder<MqttConnectionStatus>(
-          valueListenable: appState.connectionStatus,
-          builder: (context, status, _) => Wrap(
-            spacing: AppSpacing.md,
-            runSpacing: AppSpacing.md,
-            children: [
-              _metricTile('Broker', _connectionLabel(status), _connectionTone(status)),
-              ValueListenableBuilder<List<InstallerNodeModel>>(
-                valueListenable: appState.installerNodes,
-                builder: (context, nodes, _) => _metricTile(
-                  'Discovered nodes',
-                  '${nodes.length}',
-                  StatusTone.info,
+        const SizedBox(height: AppSpacing.md),
+        AnimatedBuilder(
+          animation: Listenable.merge([
+            appState.connectionStatus,
+            appState.lastLiveSystemUpdate,
+          ]),
+          builder: (context, _) {
+            if (appState.isSystemStateLive) return const SizedBox.shrink();
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              margin: const EdgeInsets.only(bottom: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.3),
                 ),
               ),
-              ValueListenableBuilder(
-                valueListenable: appState.systemState,
-                builder: (context, state, _) => _metricTile(
-                  'Battery sensor',
-                  state?.batterySensorConfigured == true
-                      ? 'Configured'
-                      : 'Not configured',
-                  state?.batterySensorConfigured == true
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 18,
+                    color: AppColors.warning,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    'Central not reporting — everything below is last known data.',
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        AnimatedBuilder(
+          animation: Listenable.merge([
+            appState.connectionStatus,
+            appState.lastLiveSystemUpdate,
+          ]),
+          builder: (context, _) {
+            final status = appState.connectionStatus.value;
+            final brokerLabel = status == MqttConnectionStatus.connected
+                ? (appState.isSystemStateLive ? 'Connected' : 'No data yet')
+                : _connectionLabel(status);
+            final brokerTone = status == MqttConnectionStatus.connected
+                ? (appState.isSystemStateLive
                       ? StatusTone.positive
-                      : StatusTone.warning,
+                      : StatusTone.warning)
+                : _connectionTone(status);
+            return Wrap(
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.md,
+              children: [
+                _metricTile('Broker', brokerLabel, brokerTone),
+                ValueListenableBuilder<List<InstallerNodeModel>>(
+                  valueListenable: appState.installerNodes,
+                  builder: (context, nodes, _) => _metricTile(
+                    'Discovered nodes',
+                    '${nodes.length}',
+                    StatusTone.info,
+                  ),
                 ),
-              ),
-            ],
-          ),
+                ValueListenableBuilder(
+                  valueListenable: appState.systemState,
+                  builder: (context, state, _) => _metricTile(
+                    'Battery sensor',
+                    state?.batterySensorConfigured == true
+                        ? 'Configured'
+                        : 'Not configured',
+                    state?.batterySensorConfigured == true
+                        ? StatusTone.positive
+                        : StatusTone.warning,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        ValueListenableBuilder<List<InstallerNodeModel>>(
+          valueListenable: appState.installerNodes,
+          builder: (context, nodes, _) {
+            final centralNode = _findCentralNode(nodes);
+            return ValueListenableBuilder(
+              valueListenable: appState.systemState,
+              builder: (context, state, _) {
+                final isDevelopment =
+                    state?.operatingEnvironment == 'DEVELOPMENT';
+                return SectionCard(
+                  title: 'Development mode',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          StatusBadge(
+                            label: isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION',
+                            tone: isDevelopment
+                                ? StatusTone.warning
+                                : StatusTone.positive,
+                          ),
+                          const Spacer(),
+                          if (centralNode == null)
+                            const Text(
+                              'Central Node not discovered yet.',
+                              style: AppTextStyles.caption,
+                            )
+                          else if (_togglingDevelopmentSession)
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            SizedBox(
+                              width: 220,
+                              child: SecondaryButton(
+                                label: isDevelopment
+                                    ? 'End Development Session'
+                                    : 'Start Development Session',
+                                onPressed: () => _toggleDevelopmentSession(
+                                  centralNode.mac,
+                                  !isDevelopment,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
         ),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
@@ -322,9 +523,13 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
               SizedBox(height: AppSpacing.xs),
               Text('2. Commission each ESP-NOW-discovered Smart Node.'),
               SizedBox(height: AppSpacing.xs),
-              Text('3. Add verified relay, rated voltage/current, branch limit and startup facts for each load.'),
+              Text(
+                '3. Add verified relay, rated voltage/current, branch limit and startup facts for each load.',
+              ),
               SizedBox(height: AppSpacing.xs),
-              Text('4. Apply the battery safety policy before enabling Auto loads.'),
+              Text(
+                '4. Apply the battery safety policy before enabling Auto loads.',
+              ),
             ],
           ),
         ),
@@ -412,7 +617,9 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Use secure WSS / TLS'),
-                    subtitle: const Text('Required for a public installer portal.'),
+                    subtitle: const Text(
+                      'Required for a public installer portal.',
+                    ),
                     value: _useTls,
                     onChanged: (value) => setState(() => _useTls = value),
                   ),
@@ -422,7 +629,8 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
                     hintText: 'kilowatts/v1/home-42',
                     validator: (value) {
                       final namespace = value?.trim() ?? '';
-                      if (namespace.isEmpty) return 'Topic namespace is required.';
+                      if (namespace.isEmpty)
+                        return 'Topic namespace is required.';
                       if (namespace.startsWith('/') ||
                           namespace.endsWith('/') ||
                           namespace.contains('#') ||
@@ -461,8 +669,12 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
                     children: [
                       Expanded(
                         child: SecondaryButton(
-                          label: _testingConnection ? 'Testing…' : 'Test connection',
-                          onPressed: _testingConnection ? null : _testConnection,
+                          label: _testingConnection
+                              ? 'Testing…'
+                              : 'Test connection',
+                          onPressed: _testingConnection
+                              ? null
+                              : _testConnection,
                         ),
                       ),
                       const SizedBox(width: AppSpacing.md),
@@ -530,6 +742,16 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
           SectionRow(label: 'Firmware', value: node.firmwareVersion ?? '—'),
           SectionRow(label: 'Board', value: node.chipModel ?? '—'),
           SectionRow(
+            label: 'Connection',
+            value: node.online == null
+                ? 'Unavailable'
+                : (node.online!
+                      ? (node.isCentralNode
+                            ? 'Online'
+                            : 'Online · ${node.hopCountToCentral ?? '?'} hop(s)')
+                      : 'Offline'),
+          ),
+          SectionRow(
             label: 'Safe relay GPIOs',
             value: node.availableRelayPins.isEmpty
                 ? 'None declared'
@@ -583,7 +805,9 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
     InstallerNodeModel node, {
     bool rename = false,
   }) async {
-    final nameController = TextEditingController(text: rename ? node.name ?? '' : '');
+    final nameController = TextEditingController(
+      text: rename ? node.name ?? '' : '',
+    );
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -609,20 +833,20 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
                 return;
               }
               final result = rename
-                  ? await AppStateScope.of(context).renameNode(
-                      nodeMac: node.mac,
-                      friendlyName: name,
-                    )
-                  : await AppStateScope.of(context).commissionNode(
-                      nodeMac: node.mac,
-                      friendlyName: name,
-                    );
+                  ? await AppStateScope.of(
+                      context,
+                    ).renameNode(nodeMac: node.mac, friendlyName: name)
+                  : await AppStateScope.of(
+                      context,
+                    ).commissionNode(nodeMac: node.mac, friendlyName: name);
               if (!context.mounted) return;
               if (result.isConfirmed) {
                 Navigator.of(dialogContext).pop();
                 _showMessage('Node configuration applied.');
               } else {
-                _showMessage(result.message ?? 'The Node rejected the request.');
+                _showMessage(
+                  result.message ?? 'The Node rejected the request.',
+                );
               }
             },
             child: Text(rename ? 'Rename' : 'Commission'),
@@ -663,9 +887,9 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
     );
     if (confirmed != true || !mounted) return;
 
-    final outcome = await AppStateScope.of(context).decommissionNode(
-      nodeMac: node.mac,
-    );
+    final outcome = await AppStateScope.of(
+      context,
+    ).decommissionNode(nodeMac: node.mac);
     if (!mounted) return;
     _showMessage(
       outcome.isConfirmed
@@ -683,6 +907,10 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
 
   Widget _safetyPage() {
     return const _SafetyPolicyForm();
+  }
+
+  Widget _accessPage() {
+    return const _TeamAccessForm();
   }
 
   String _connectionLabel(MqttConnectionStatus status) {
@@ -775,7 +1003,8 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
 
   int? _integer(TextEditingController controller) {
     final value = controller.text.trim().toLowerCase();
-    if (value.startsWith('0x')) return int.tryParse(value.substring(2), radix: 16);
+    if (value.startsWith('0x'))
+      return int.tryParse(value.substring(2), radix: 16);
     return int.tryParse(value);
   }
 
@@ -797,7 +1026,9 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
       _saving = true;
       _error = null;
     });
-    final outcome = await AppStateScope.of(context).configureLoad(configuration);
+    final outcome = await AppStateScope.of(
+      context,
+    ).configureLoad(configuration);
     if (!mounted) return;
     if (outcome.status == CommandStatus.confirmed) {
       Navigator.of(context).pop();
@@ -812,9 +1043,15 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
     });
   }
 
-  String? _requiredNumber(String? value, {double min = 0, bool strictlyPositive = false}) {
+  String? _requiredNumber(
+    String? value, {
+    double min = 0,
+    bool strictlyPositive = false,
+  }) {
     final parsed = double.tryParse(value?.trim() ?? '');
-    if (parsed == null || !parsed.isFinite || (strictlyPositive ? parsed <= min : parsed < min)) {
+    if (parsed == null ||
+        !parsed.isFinite ||
+        (strictlyPositive ? parsed <= min : parsed < min)) {
       return 'Enter a valid value.';
     }
     return null;
@@ -848,8 +1085,10 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 DropdownButtonFormField<int>(
-                  value: _relayPin,
-                  decoration: const InputDecoration(labelText: 'Verified relay GPIO'),
+                  initialValue: _relayPin,
+                  decoration: const InputDecoration(
+                    labelText: 'Verified relay GPIO',
+                  ),
                   items: [
                     for (final pin in widget.node.availableRelayPins)
                       DropdownMenuItem(value: pin, child: Text('GPIO $pin')),
@@ -859,7 +1098,9 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Active-high relay module'),
-                  subtitle: const Text('Turn off for the common active-low relay boards.'),
+                  subtitle: const Text(
+                    'Turn off for the common active-low relay boards.',
+                  ),
                   value: _activeHigh,
                   onChanged: (value) => setState(() => _activeHigh = value),
                 ),
@@ -867,14 +1108,20 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                   AppTextField(
                     label: 'Rated voltage (V)',
                     controller: _nominalVoltage,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) => _requiredNumber(value, strictlyPositive: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (value) =>
+                        _requiredNumber(value, strictlyPositive: true),
                   ),
                   AppTextField(
                     label: 'Rated current (A)',
                     controller: _nominalCurrent,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) => _requiredNumber(value, strictlyPositive: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (value) =>
+                        _requiredNumber(value, strictlyPositive: true),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -882,8 +1129,11 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                   AppTextField(
                     label: 'Branch limit (A)',
                     controller: _branchMax,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) => _requiredNumber(value, strictlyPositive: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (value) =>
+                        _requiredNumber(value, strictlyPositive: true),
                   ),
                   AppTextField(
                     label: 'Priority (0–10)',
@@ -902,7 +1152,9 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                   AppTextField(
                     label: 'Startup power (W)',
                     controller: _startupWatts,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (value) {
                       final startup = double.tryParse(value?.trim() ?? '');
                       final voltage = _number(_nominalVoltage);
@@ -910,7 +1162,9 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                       final planned = voltage == null || current == null
                           ? null
                           : voltage * current;
-                      return startup == null || planned == null || startup < planned
+                      return startup == null ||
+                              planned == null ||
+                              startup < planned
                           ? 'Must be ≥ rated V × A.'
                           : null;
                     },
@@ -922,11 +1176,19 @@ class _ConfigureLoadDialogState extends State<_ConfigureLoadDialog> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 DropdownButtonFormField<LoadMode>(
-                  value: _mode,
-                  decoration: const InputDecoration(labelText: 'Initial operating mode'),
+                  initialValue: _mode,
+                  decoration: const InputDecoration(
+                    labelText: 'Initial operating mode',
+                  ),
                   items: const [
-                    DropdownMenuItem(value: LoadMode.auto, child: Text('Auto (initially off)')),
-                    DropdownMenuItem(value: LoadMode.fixed, child: Text('Fixed (initially off)')),
+                    DropdownMenuItem(
+                      value: LoadMode.auto,
+                      child: Text('Auto (initially off)'),
+                    ),
+                    DropdownMenuItem(
+                      value: LoadMode.fixed,
+                      child: Text('Fixed (initially off)'),
+                    ),
                   ],
                   onChanged: (value) => setState(() => _mode = value!),
                 ),
@@ -980,13 +1242,15 @@ class _ConfigureBatteryDialog extends StatefulWidget {
   final InstallerNodeModel centralNode;
 
   @override
-  State<_ConfigureBatteryDialog> createState() => _ConfigureBatteryDialogState();
+  State<_ConfigureBatteryDialog> createState() =>
+      _ConfigureBatteryDialogState();
 }
 
 class _ConfigureBatteryDialogState extends State<_ConfigureBatteryDialog> {
   final _formKey = GlobalKey<FormState>();
   final _i2cAddress = TextEditingController(text: '0x40');
   final _shunt = TextEditingController(text: '0.005');
+  final _nominalVoltage = TextEditingController(text: '12');
   final _maxCurrent = TextEditingController(text: '40');
   final _ema = TextEditingController(text: '0.2');
   final _capacity = TextEditingController(text: '100');
@@ -998,6 +1262,7 @@ class _ConfigureBatteryDialogState extends State<_ConfigureBatteryDialog> {
   void dispose() {
     _i2cAddress.dispose();
     _shunt.dispose();
+    _nominalVoltage.dispose();
     _maxCurrent.dispose();
     _ema.dispose();
     _capacity.dispose();
@@ -1007,7 +1272,8 @@ class _ConfigureBatteryDialogState extends State<_ConfigureBatteryDialog> {
 
   int? _integer(TextEditingController controller) {
     final value = controller.text.trim().toLowerCase();
-    if (value.startsWith('0x')) return int.tryParse(value.substring(2), radix: 16);
+    if (value.startsWith('0x'))
+      return int.tryParse(value.substring(2), radix: 16);
     return int.tryParse(value);
   }
 
@@ -1031,6 +1297,7 @@ class _ConfigureBatteryDialogState extends State<_ConfigureBatteryDialog> {
       centralNodeMac: widget.centralNode.mac,
       i2cAddress: _integer(_i2cAddress)!,
       shuntResistanceOhms: _number(_shunt)!,
+      nominalVoltageVolts: _number(_nominalVoltage)!,
       maximumExpectedCurrentAmps: _number(_maxCurrent)!,
       emaAlpha: _number(_ema)!,
       batteryCapacityAmpHours: _number(_capacity)!,
@@ -1081,22 +1348,39 @@ class _ConfigureBatteryDialogState extends State<_ConfigureBatteryDialog> {
                   AppTextField(
                     label: 'Shunt resistance (Ω)',
                     controller: _shunt,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: _positive,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _twoFields(
                   AppTextField(
-                    label: 'Maximum sensor current (A)',
-                    controller: _maxCurrent,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    label: 'Nominal battery voltage (V)',
+                    controller: _nominalVoltage,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: _positive,
                   ),
                   AppTextField(
+                    label: 'Maximum sensor current (A)',
+                    controller: _maxCurrent,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: _positive,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _twoFields(
+                  AppTextField(
                     label: 'EMA alpha (0–1]',
                     controller: _ema,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (value) {
                       final parsed = double.tryParse(value?.trim() ?? '');
                       return parsed == null || parsed <= 0 || parsed > 1
@@ -1104,26 +1388,28 @@ class _ConfigureBatteryDialogState extends State<_ConfigureBatteryDialog> {
                           : null;
                     },
                   ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _twoFields(
                   AppTextField(
                     label: 'Battery capacity (Ah)',
                     controller: _capacity,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: _positive,
                   ),
-                  AppTextField(
-                    label: 'Initial state of charge (%)',
-                    controller: _initialSoc,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) {
-                      final parsed = double.tryParse(value?.trim() ?? '');
-                      return parsed == null || parsed < 0 || parsed > 100
-                          ? 'Use 0–100.'
-                          : null;
-                    },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppTextField(
+                  label: 'Initial state of charge (%)',
+                  controller: _initialSoc,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
+                  validator: (value) {
+                    final parsed = double.tryParse(value?.trim() ?? '');
+                    return parsed == null || parsed < 0 || parsed > 100
+                        ? 'Use 0–100.'
+                        : null;
+                  },
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: AppSpacing.md),
@@ -1227,11 +1513,15 @@ class _SafetyPolicyFormState extends State<_SafetyPolicyForm> {
     if (!mounted) return;
     setState(() {
       _saving = false;
-      _error = result.isConfirmed ? null : result.message ?? 'Central rejected the safety policy.';
+      _error = result.isConfirmed
+          ? null
+          : result.message ?? 'Central rejected the safety policy.';
     });
     if (result.isConfirmed) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Safety policy applied and persisted on Central.')),
+        const SnackBar(
+          content: Text('Safety policy applied and persisted on Central.'),
+        ),
       );
     }
   }
@@ -1258,7 +1548,9 @@ class _SafetyPolicyFormState extends State<_SafetyPolicyForm> {
                     AppTextField(
                       label: 'Minimum state of charge (%)',
                       controller: _minimumSoc,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (value) {
                         final parsed = double.tryParse(value?.trim() ?? '');
                         return parsed == null || parsed < 0 || parsed > 100
@@ -1269,7 +1561,9 @@ class _SafetyPolicyFormState extends State<_SafetyPolicyForm> {
                     AppTextField(
                       label: 'Warning state of charge (%)',
                       controller: _warningSoc,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (value) {
                         final parsed = double.tryParse(value?.trim() ?? '');
                         return parsed == null || parsed < 0 || parsed > 100
@@ -1283,13 +1577,17 @@ class _SafetyPolicyFormState extends State<_SafetyPolicyForm> {
                     AppTextField(
                       label: 'Target runtime (hours)',
                       controller: _targetRuntime,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: _positive,
                     ),
                     AppTextField(
                       label: 'Safety margin (%)',
                       controller: _safetyMargin,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (value) {
                         final parsed = double.tryParse(value?.trim() ?? '');
                         return parsed == null || parsed < 0 || parsed >= 100
@@ -1303,19 +1601,26 @@ class _SafetyPolicyFormState extends State<_SafetyPolicyForm> {
                     AppTextField(
                       label: 'Maximum battery discharge (A)',
                       controller: _batteryCurrent,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: _positive,
                     ),
                     AppTextField(
                       label: 'Maximum main current (A)',
                       controller: _mainCurrent,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: _positive,
                     ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: AppSpacing.md),
-                    Text(_error!, style: const TextStyle(color: AppColors.error)),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: AppColors.error),
+                    ),
                   ],
                   const SizedBox(height: AppSpacing.lg),
                   PrimaryButton(
@@ -1340,4 +1645,142 @@ class _SafetyPolicyFormState extends State<_SafetyPolicyForm> {
       Expanded(child: second),
     ],
   );
+}
+
+/// Grants the `installer` or `homeowner` role to another Firebase account.
+/// This is the only in-app path to setting the custom claims that
+/// [AccessControlService] reads — everything here goes through the
+/// `assignRole` Cloud Function, which itself requires the caller to already
+/// hold the installer role.
+class _TeamAccessForm extends StatefulWidget {
+  const _TeamAccessForm();
+
+  @override
+  State<_TeamAccessForm> createState() => _TeamAccessFormState();
+}
+
+class _TeamAccessFormState extends State<_TeamAccessForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _email = TextEditingController();
+  final _installationId = TextEditingController();
+  String _role = 'homeowner';
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _installationId.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await AppStateScope.of(context).assignRole(
+        email: _email.text.trim(),
+        role: _role,
+        installationId: _installationId.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _email.clear();
+        _installationId.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Granted $_role access to ${_email.text}.')),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e.message ?? 'Firestore rejected this write.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'Could not reach Firestore.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        const Text('Team access', style: AppTextStyles.display),
+        const SizedBox(height: AppSpacing.xs),
+        const Text(
+          'Grant installer or homeowner access to another account. Only accounts with installer access can do this.',
+          style: AppTextStyles.subtitle,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: SectionCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  AppTextField(
+                    label: 'Account email',
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    validator: (value) {
+                      final email = value?.trim() ?? '';
+                      return email.contains('@')
+                          ? null
+                          : 'Enter a valid email address.';
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  DropdownButtonFormField<String>(
+                    initialValue: _role,
+                    decoration: const InputDecoration(labelText: 'Role'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'homeowner',
+                        child: Text('Homeowner'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'installer',
+                        child: Text('Installer'),
+                      ),
+                    ],
+                    onChanged: (value) => setState(() => _role = value!),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  AppTextField(
+                    label: 'Installation ID (homeowner only)',
+                    controller: _installationId,
+                    hintText: 'home-42',
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: AppColors.error),
+                    ),
+                  ],
+                  const SizedBox(height: AppSpacing.lg),
+                  PrimaryButton(
+                    label: 'Grant access',
+                    isLoading: _saving,
+                    onPressed: _submit,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

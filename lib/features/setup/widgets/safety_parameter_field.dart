@@ -64,8 +64,9 @@ class SafetyParameterField extends StatelessWidget {
               validator: (value) {
                 final parsed = double.tryParse(value ?? '');
                 if (parsed == null) return 'Invalid';
-                if (ceiling != null && parsed > ceiling!)
+                if (ceiling != null && parsed > ceiling!) {
                   return 'Exceeds ceiling';
+                }
                 return null;
               },
               onChanged: (value) {

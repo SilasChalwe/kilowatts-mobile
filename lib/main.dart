@@ -52,7 +52,7 @@ class FirebaseBootstrapErrorApp extends StatelessWidget {
                     const Icon(Icons.cloud_off_outlined, size: 64),
                     const SizedBox(height: 24),
                     const Text(
-                      'Kilowatts could not initialize Firebase',
+                      'Kilowatts could not connect to its account service',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 22,

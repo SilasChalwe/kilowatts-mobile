@@ -79,7 +79,7 @@ class _InstallerAccessRequiredScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'This web console can configure physical relays, the Central battery sensor and safety limits. An administrator must assign your Firebase account the installer role before access is granted.',
+                    'This web console can configure physical relays, the Central battery sensor and safety limits. An administrator must assign your account the installer role before access is granted.',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),

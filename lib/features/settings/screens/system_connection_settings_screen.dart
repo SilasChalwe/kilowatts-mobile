@@ -259,7 +259,7 @@ class _SystemConnectionSettingsScreenState
             const SectionCard(
               title: 'Account safety',
               child: Text(
-                'Use an account restricted by the broker to this installation. Firebase sign-in controls app access, but broker permissions must independently allow only the topics and load actions intended for this household.',
+                'Use an account restricted by the broker to this installation. Account sign-in controls app access, but broker permissions must independently allow only the topics and load actions intended for this household.',
               ),
             ),
           ],

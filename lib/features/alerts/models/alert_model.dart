@@ -84,6 +84,21 @@ class AlertModel {
   final String? loadId;
   final bool acknowledged;
 
+  /// Round-trips with [fromJson] for on-device caching only (see
+  /// LocalStateService.cacheAlerts) — not the wire shape published on
+  /// `events`, which fromJson also tolerantly accepts.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'severity': severity.name,
+    'category': _categoryWireValue(category),
+    'title': title,
+    'message': message,
+    'timestamp': timestamp.toIso8601String(),
+    if (nodeMac != null) 'node_mac': nodeMac,
+    if (loadId != null) 'load_id': loadId,
+    'acknowledged': acknowledged,
+  };
+
   AlertModel copyWith({bool? acknowledged}) {
     return AlertModel(
       id: id,
@@ -121,6 +136,35 @@ class AlertModel {
       loadId: json.stringOrNull('load_id'),
       acknowledged: json.boolOrNull('acknowledged') ?? false,
     );
+  }
+
+  static String _categoryWireValue(AlertCategory category) {
+    switch (category) {
+      case AlertCategory.lowBattery:
+        return 'LOW_BATTERY';
+      case AlertCategory.criticalBattery:
+        return 'CRITICAL_BATTERY';
+      case AlertCategory.branchLimit:
+        return 'BRANCH_LIMIT';
+      case AlertCategory.mainLimit:
+        return 'MAIN_LIMIT';
+      case AlertCategory.batteryCurrentLimit:
+        return 'BATTERY_CURRENT_LIMIT';
+      case AlertCategory.nodeOffline:
+        return 'NODE_OFFLINE';
+      case AlertCategory.sensorFault:
+        return 'SENSOR_FAULT';
+      case AlertCategory.relayFailure:
+        return 'RELAY_FAILURE';
+      case AlertCategory.mqttConnection:
+        return 'MQTT_CONNECTION';
+      case AlertCategory.systemProtection:
+        return 'SYSTEM_PROTECTION';
+      case AlertCategory.scheduleExecuted:
+        return 'SCHEDULE_EXECUTED';
+      case AlertCategory.other:
+        return 'OTHER';
+    }
   }
 
   static String _severityForEvent(String? eventType) {

@@ -110,6 +110,7 @@ class AppState {
         alerts.value = next.length > _maxStoredAlerts
             ? next.sublist(0, _maxStoredAlerts)
             : next;
+        unawaited(_persistAlerts());
       }),
     );
     _subscriptions.add(
@@ -126,11 +127,21 @@ class AppState {
   }
 
   Future<void> _loadCachedSnapshot() async {
-    if (systemState.value != null) return;
-    final cached = await _localState.readCachedSystemState();
-    if (cached == null || systemState.value != null) return;
-    systemState.value = SystemStateModel.fromJson(cached);
+    if (systemState.value == null) {
+      final cached = await _localState.readCachedSystemState();
+      if (cached != null && systemState.value == null) {
+        systemState.value = SystemStateModel.fromJson(cached);
+      }
+    }
+
+    final cachedAlerts = await _localState.readCachedAlerts();
+    if (cachedAlerts != null && alerts.value.isEmpty) {
+      alerts.value = cachedAlerts.map(AlertModel.fromJson).toList();
+    }
   }
+
+  Future<void> _persistAlerts() =>
+      _localState.cacheAlerts(alerts.value.map((a) => a.toJson()).toList());
 
   // ── MQTT connection actions ──────────────────────────────────────────
   Future<void> connectMqtt() => _mqtt.connect();
@@ -201,6 +212,7 @@ class AppState {
     required String centralNodeMac,
     required int i2cAddress,
     required double shuntResistanceOhms,
+    required double nominalVoltageVolts,
     required double maximumExpectedCurrentAmps,
     required double emaAlpha,
     required double batteryCapacityAmpHours,
@@ -209,16 +221,26 @@ class AppState {
     centralNodeMac: centralNodeMac,
     i2cAddress: i2cAddress,
     shuntResistanceOhms: shuntResistanceOhms,
+    nominalVoltageVolts: nominalVoltageVolts,
     maximumExpectedCurrentAmps: maximumExpectedCurrentAmps,
     emaAlpha: emaAlpha,
     batteryCapacityAmpHours: batteryCapacityAmpHours,
     initialStateOfChargePercent: initialStateOfChargePercent,
   );
 
+  Future<CommandOutcome> setDevelopmentSession({
+    required String centralNodeMac,
+    required bool start,
+  }) => _mqtt.setDevelopmentSession(
+    centralNodeMac: centralNodeMac,
+    start: start,
+  );
+
   void acknowledgeAllAlerts() {
     alerts.value = [
       for (final alert in alerts.value) alert.copyWith(acknowledged: true),
     ];
+    unawaited(_persistAlerts());
   }
 
   // ── Local setup / preference state ───────────────────────────────────
@@ -237,6 +259,16 @@ class AppState {
 
   Future<InstallationAccess> resolveCurrentAccess() =>
       _accessControlService.resolve(currentUser);
+
+  Future<void> assignRole({
+    required String email,
+    required String role,
+    String? installationId,
+  }) => _accessControlService.assignRole(
+    email: email,
+    role: role,
+    installationId: installationId,
+  );
 
   void dispose() {
     for (final subscription in _subscriptions) {

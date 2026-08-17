@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -57,6 +54,16 @@ class DefaultFirebaseOptions {
     appId: '1:889763140910:android:973a383adf73ffe26a96bf',
     messagingSenderId: '889763140910',
     projectId: 'kilowatts-covianhive-22177295',
+    databaseURL: 'https://kilowatts-covianhive-22177295-default-rtdb.firebaseio.com',
+    storageBucket: 'kilowatts-covianhive-22177295.firebasestorage.app',
+  );
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyDajKU9PFXbK37Ab4dUlwaES7XphSd10B4',
+    appId: '1:889763140910:web:1b6b9b0b02b041756a96bf',
+    messagingSenderId: '889763140910',
+    projectId: 'kilowatts-covianhive-22177295',
+    authDomain: 'kilowatts-covianhive-22177295.firebaseapp.com',
+    databaseURL: 'https://kilowatts-covianhive-22177295-default-rtdb.firebaseio.com',
     storageBucket: 'kilowatts-covianhive-22177295.firebasestorage.app',
   );
 }

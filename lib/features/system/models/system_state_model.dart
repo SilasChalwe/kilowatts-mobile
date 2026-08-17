@@ -29,6 +29,8 @@ class SystemStateModel {
     this.timeSource,
     this.lastOptimizationAt,
     this.sensorInputSource,
+    this.operatingEnvironment,
+    this.developmentSessionActive,
     this.faultCount,
     this.faultSummary,
     this.receivedAt,
@@ -60,6 +62,17 @@ class SystemStateModel {
 
   /// "DEVELOPMENT" or "INA219 HARDWARE" — never presented ambiguously.
   final String? sensorInputSource;
+
+  /// "PRODUCTION" or "DEVELOPMENT" — the whole device's Operating
+  /// Environment, distinct from [sensorInputSource] (which is per-reading).
+  /// A device stuck in DEVELOPMENT is serving simulated readings across the
+  /// board, not just one overridden sensor, so this must be shown wherever
+  /// [sensorInputSource] or any live number is shown, never inferred from it.
+  final String? operatingEnvironment;
+
+  /// True only while an explicit Development Session is armed on Central.
+  final bool? developmentSessionActive;
+
   final int? faultCount;
   final String? faultSummary;
 
@@ -108,6 +121,10 @@ class SystemStateModel {
           ? null
           : time.dateTimeOrNull('lastOptimizationEpochSeconds'),
       sensorInputSource: battery.stringOrNull('measurementSource'),
+      operatingEnvironment: diagnostics.stringOrNull('operatingEnvironment'),
+      developmentSessionActive: diagnostics.boolOrNull(
+        'developmentSessionActive',
+      ),
       faultCount: diagnostics.intOrNull('faultCount'),
       faultSummary: diagnostics.stringOrNull('faultSummary'),
       receivedAt: DateTime.now(),

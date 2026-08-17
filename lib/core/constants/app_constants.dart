@@ -13,11 +13,11 @@ class MqttTopics {
   String get stateTree => '$namespace/state/tree';
   String get stateLoads => '$namespace/state/loads';
   String get stateNodes => '$namespace/state/nodes';
-  String get configNodes => '$namespace/config/nodes';
   String get events => '$namespace/events';
   String get commandsLoad => '$namespace/commands/load';
   String get commandsSystem => '$namespace/commands/system';
   String get commandsConfig => '$namespace/commands/config';
+  String get commandsDevelopment => '$namespace/commands/development';
   String get acks => '$namespace/acks';
 
   List<String> get subscriptions => [
@@ -25,7 +25,6 @@ class MqttTopics {
     stateTree,
     stateLoads,
     stateNodes,
-    configNodes,
     events,
     acks,
   ];
@@ -41,6 +40,12 @@ abstract final class AppConstants {
 
   static const Duration mqttReconnectMinDelay = Duration(seconds: 2);
   static const Duration mqttReconnectMaxDelay = Duration(seconds: 30);
+
+  /// mqtt_client's own connectTimeoutPeriod is not actually enforced around
+  /// the initial WebSocket/socket handshake in the versions this app has
+  /// used — a broker that never completes the handshake leaves connect()
+  /// awaiting forever. This bounds it at the call site instead.
+  static const Duration mqttConnectTimeout = Duration(seconds: 15);
 
   static const int setupTotalSteps = 7;
 

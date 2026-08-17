@@ -12,33 +12,48 @@ class PowerSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppSpacing.sm,
-      crossAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 2.2,
+    return Column(
       children: [
-        MetricCard(
-          label: 'Available Power',
-          value: Formatters.power(state.availablePowerW),
-          icon: Icons.bolt_outlined,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: MetricCard(
+                label: 'Available Power',
+                value: Formatters.power(state.availablePowerW),
+                icon: Icons.bolt_outlined,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: MetricCard(
+                label: 'Committed Power',
+                value: Formatters.power(state.committedPowerW),
+                icon: Icons.power_outlined,
+              ),
+            ),
+          ],
         ),
-        MetricCard(
-          label: 'Committed Power',
-          value: Formatters.power(state.committedPowerW),
-          icon: Icons.power_outlined,
-        ),
-        MetricCard(
-          label: 'Fixed Loads',
-          value: Formatters.power(state.fixedLoadPowerW),
-          icon: Icons.push_pin_outlined,
-        ),
-        MetricCard(
-          label: 'Auto Loads',
-          value: Formatters.power(state.autoLoadPowerW),
-          icon: Icons.auto_mode_outlined,
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: MetricCard(
+                label: 'Fixed Loads',
+                value: Formatters.power(state.fixedLoadPowerW),
+                icon: Icons.push_pin_outlined,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: MetricCard(
+                label: 'Auto Loads',
+                value: Formatters.power(state.autoLoadPowerW),
+                icon: Icons.auto_mode_outlined,
+              ),
+            ),
+          ],
         ),
       ],
     );

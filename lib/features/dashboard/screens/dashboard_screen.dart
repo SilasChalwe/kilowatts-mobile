@@ -4,6 +4,7 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/development_mode_badge.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/live_status_badge.dart';
 import '../../../core/widgets/loading_indicator.dart';
@@ -74,6 +75,8 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     const Text('Dashboard', style: AppTextStyles.title),
                     const Spacer(),
+                    const DevelopmentModeBadge(),
+                    const SizedBox(width: AppSpacing.sm),
                     const LiveStatusBadge(),
                   ],
                 ),

@@ -125,10 +125,6 @@ class SettingsScreen extends StatelessWidget {
                     label: 'App Version',
                     value: AppConstants.appVersion,
                   ),
-                  const SectionRow(
-                    label: 'Firebase Project',
-                    value: 'Kilowatts',
-                  ),
                 ],
               ),
             ),

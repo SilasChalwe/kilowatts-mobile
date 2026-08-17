@@ -92,6 +92,7 @@ class NodeModel {
   }) {
     final branchesJson = json.listOfMaps('branches');
     final childrenJson = json.listOfMaps('children');
+    final diagnosticsJson = json['diagnostics'];
     return NodeModel(
       mac: json.stringOrNull('mac') ?? '',
       role: isCentral ? NodeRole.central : NodeRole.smartNode,
@@ -106,6 +107,9 @@ class NodeModel {
       childNodeMacs: [
         for (final child in childrenJson) child.stringOrNull('mac') ?? '',
       ],
+      diagnostics: NodeDiagnosticsModel.fromJson(
+        diagnosticsJson is Map<String, dynamic> ? diagnosticsJson : null,
+      ),
     );
   }
 }

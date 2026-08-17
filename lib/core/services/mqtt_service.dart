@@ -157,7 +157,9 @@ class MqttService {
     final client = _buildClient(config, clientId);
 
     try {
-      final status = await client.connect(config.username, config.password);
+      final status = await client
+          .connect(config.username, config.password)
+          .timeout(AppConstants.mqttConnectTimeout, onTimeout: () => null);
       final connected = status?.state == MqttConnectionState.connected;
       client.disconnect();
       if (connected) return MqttConnectionStatus.connected;
@@ -189,7 +191,9 @@ class MqttService {
     _client = client;
 
     try {
-      final status = await client.connect(_config.username, _config.password);
+      final status = await client
+          .connect(_config.username, _config.password)
+          .timeout(AppConstants.mqttConnectTimeout, onTimeout: () => null);
 
       // A save/reconnect can replace this client while connect() is still
       // awaiting a browser or TCP handshake. That older attempt must not
@@ -316,7 +320,7 @@ class MqttService {
       cache?.cacheLoads(loadsJson);
       return;
     }
-    if (topic == _topics.configNodes) {
+    if (topic == _topics.stateNodes) {
       final nodes =
           (payload['nodes'] as List?)
               ?.whereType<Map>()
@@ -392,7 +396,7 @@ class MqttService {
       'relayPin': relayPin,
       if (mode != null && requestedState != null)
         'mode': _wireMode(mode, requestedState),
-      if (priority != null) 'priority': priority,
+      'priority': ?priority,
       if (schedule != null)
         'schedule': {
           'enabled': schedule.enabled,
@@ -475,6 +479,7 @@ class MqttService {
     required String centralNodeMac,
     required int i2cAddress,
     required double shuntResistanceOhms,
+    required double nominalVoltageVolts,
     required double maximumExpectedCurrentAmps,
     required double emaAlpha,
     required double batteryCapacityAmpHours,
@@ -486,11 +491,31 @@ class MqttService {
       'batterySensor': {
         'i2cAddress': i2cAddress,
         'shuntResistanceOhms': shuntResistanceOhms,
+        'nominalVoltageVolts': nominalVoltageVolts,
         'maximumExpectedCurrentAmps': maximumExpectedCurrentAmps,
         'emaAlpha': emaAlpha,
         'batteryCapacityAmpHours': batteryCapacityAmpHours,
         'initialStateOfChargePercent': initialStateOfChargePercent,
       },
+    });
+  }
+
+  /// Starts or ends Central's Development Session (commands/development,
+  /// action START_SESSION/END_SESSION) — the only way the whole device's
+  /// Operating Environment (see [SystemStateModel.operatingEnvironment])
+  /// switches between PRODUCTION and DEVELOPMENT. Installer-only by policy:
+  /// this is called exclusively from the installer-only Flutter Web portal,
+  /// never from the homeowner mobile app, which only ever displays the
+  /// resulting state.
+  Future<CommandOutcome> setDevelopmentSession({
+    required String centralNodeMac,
+    required bool start,
+  }) {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.commandsDevelopment, commandId, {
+      'commandId': commandId,
+      'action': start ? 'START_SESSION' : 'END_SESSION',
+      'nodeMac': centralNodeMac,
     });
   }
 

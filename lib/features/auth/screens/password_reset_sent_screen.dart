@@ -30,7 +30,7 @@ class PasswordResetSentScreen extends StatelessWidget {
           const AuthHeader(
             title: 'Check Your Email',
             subtitle:
-                'If an account matches that email, Firebase will send password reset instructions.',
+                'If an account matches that email, we will send password reset instructions.',
           ),
           if (email.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),

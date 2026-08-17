@@ -80,7 +80,7 @@ class _SystemConnectionScreenState extends State<SystemConnectionScreen> {
                             child: Column(
                               children: [
                                 SectionRow(
-                                  label: 'Firebase Authentication',
+                                  label: 'Account Sign-In',
                                   valueWidget: StatusBadge(
                                     label: appState.currentUser != null
                                         ? 'Connected'

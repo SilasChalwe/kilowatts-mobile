@@ -11,9 +11,11 @@ enum _AlertFilter { all, critical, warning, info }
 
 /// Alerts arrive one at a time on `kilowatts/v1/events` — there is no
 /// "history of past alerts" topic, so this list only ever holds what has
-/// streamed in since the app was opened (accumulated centrally in
-/// [AppState.alerts], not by this screen). Acknowledgement is a local,
-/// on-device convenience; there is no documented ack-back channel yet.
+/// streamed in since the device was first connected (accumulated centrally
+/// in [AppState.alerts], not by this screen, and cached on-device via
+/// LocalStateService.cacheAlerts so it survives an app restart).
+/// Acknowledgement is a local, on-device convenience; there is no broker
+/// ack-back channel — Central has no concept of alert IDs to acknowledge.
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
 

@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// users/{email} holds the Kilowatts role (installer/homeowner) and
+// installationId that lib/features/auth/data/access_control_service.dart
+// reads to gate access. A signed-in account may only ever read its own
+// document; only an existing installer may read or write any document,
+// including granting the very first installer's own doc by hand in the
+// Firebase Console (console writes bypass these rules for project owners).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{emailId} {
+      allow read: if request.auth != null && request.auth.token.email == emailId;
+      allow read, write: if isInstaller();
+    }
+  }
+
+  function isInstaller() {
+    return request.auth != null &&
+      exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+      get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'installer';
+  }
+}

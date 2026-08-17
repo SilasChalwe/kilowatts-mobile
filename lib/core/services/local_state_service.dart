@@ -17,6 +17,7 @@ class LocalStateService {
   static const _lastLoadsKey = 'kilowatts.last_loads';
   static const _lastSyncedAtKey = 'kilowatts.last_synced_at';
   static const _nodeNameOverridesKey = 'kilowatts.node_name_overrides';
+  static const _alertsKey = 'kilowatts.alerts';
 
   Future<bool> isSetupComplete() async {
     final prefs = await SharedPreferences.getInstance();
@@ -97,5 +98,28 @@ class LocalStateService {
     overrides[mac] = name;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_nodeNameOverridesKey, jsonEncode(overrides));
+  }
+
+  /// Alerts have no server-side history — this is the only reason a
+  /// returning user still sees anything older than what streamed in since
+  /// this app launch (including which ones were already marked read).
+  Future<void> cacheAlerts(List<Map<String, dynamic>> alerts) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_alertsKey, jsonEncode(alerts));
+  }
+
+  Future<List<Map<String, dynamic>>?> readCachedAlerts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_alertsKey);
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw) as List;
+      return decoded
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      return null;
+    }
   }
 }
