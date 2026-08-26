@@ -19,9 +19,26 @@ class InstallerOperationsScreen extends StatefulWidget {
 class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
   bool _optimizing = false;
   bool _savingInterval = false;
+  bool _loadedInterval = false;
   String? _message;
   bool _messageIsError = false;
   int? _lastAppliedInterval;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadedInterval) return;
+    _loadedInterval = true;
+    _loadLastInterval();
+  }
+
+  Future<void> _loadLastInterval() async {
+    final value = await AppStateScope.of(
+      context,
+    ).readLastInstallerOptimizerIntervalSeconds();
+    if (!mounted) return;
+    setState(() => _lastAppliedInterval = value);
+  }
 
   void _showOutcome(CommandOutcome outcome, String successText) {
     setState(() {
@@ -54,10 +71,15 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
       _savingInterval = true;
       _message = null;
     });
-    final outcome = await AppStateScope.of(
-      context,
-    ).setOptimizerIntervalSeconds(seconds);
+    final appState = AppStateScope.of(context);
+    final outcome = await appState.setOptimizerIntervalSeconds(seconds);
     if (!mounted) return;
+
+    if (outcome.isConfirmed) {
+      await appState.cacheLastInstallerOptimizerIntervalSeconds(seconds);
+      if (!mounted) return;
+    }
+
     setState(() {
       _savingInterval = false;
       if (outcome.isConfirmed) _lastAppliedInterval = seconds;
@@ -220,7 +242,9 @@ class _IntervalDialogState extends State<_IntervalDialog> {
               children: [
                 for (final preset in const [30, 60, 300, 900, 3600])
                   ChoiceChip(
-                    label: Text(_InstallerOperationsScreenState._friendlyInterval(preset)),
+                    label: Text(
+                      _InstallerOperationsScreenState._friendlyInterval(preset),
+                    ),
                     selected: selected == preset,
                     onSelected: (_) => _select(preset),
                   ),
