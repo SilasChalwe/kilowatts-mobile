@@ -30,8 +30,13 @@ class _LoadsScreenState extends State<LoadsScreen> {
   List<LoadModel> _apply(List<LoadModel> loads) {
     final query = _searchController.text.trim().toLowerCase();
     return loads.where((load) {
-      if (query.isNotEmpty && !load.name.toLowerCase().contains(query)) {
-        return false;
+      if (query.isNotEmpty) {
+        final searchable = [
+          load.name,
+          load.owningNodeName ?? '',
+          load.owningNodeMac,
+        ].join(' ').toLowerCase();
+        if (!searchable.contains(query)) return false;
       }
       switch (_filter) {
         case _LoadFilter.all:
@@ -50,6 +55,12 @@ class _LoadsScreenState extends State<LoadsScreen> {
     }).toList();
   }
 
+  void _openLoad(LoadModel load) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
@@ -60,19 +71,51 @@ class _LoadsScreenState extends State<LoadsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Loads', style: AppTextStyles.title),
+            ValueListenableBuilder<List<LoadModel>>(
+              valueListenable: appState.loads,
+              builder: (context, loads, _) {
+                final onCount = loads.where((load) => load.displayState == true).length;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Loads', style: AppTextStyles.title),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${loads.length} configured · $onCount currently on',
+                            style: AppTextStyles.caption,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _searchController,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                hintText: 'Search loads…',
-                prefixIcon: Icon(Icons.search, size: 20),
+              decoration: InputDecoration(
+                hintText: 'Search load, node or MAC address…',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                      ),
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
             SizedBox(
-              height: 36,
+              height: 38,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
@@ -87,32 +130,54 @@ class _LoadsScreenState extends State<LoadsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.md),
             Expanded(
               child: ValueListenableBuilder<List<LoadModel>>(
                 valueListenable: appState.loads,
                 builder: (context, loads, _) {
                   final filtered = _apply(loads);
                   if (filtered.isEmpty) {
-                    return const EmptyState(
+                    return EmptyState(
                       icon: Icons.search_off_rounded,
-                      title: 'No Loads Match',
-                      message: 'Try a different search or filter.',
+                      title: loads.isEmpty ? 'No loads configured' : 'No loads match',
+                      message: loads.isEmpty
+                          ? 'Configured loads will appear here after installation.'
+                          : 'Try a different search term or filter.',
                     );
                   }
-                  return ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (context, index) {
-                      final load = filtered[index];
-                      return LoadCard(
-                        load: load,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => LoadDetailsScreen(load: load),
-                          ),
+
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final columns = constraints.maxWidth >= 1150
+                          ? 3
+                          : constraints.maxWidth >= 720
+                              ? 2
+                              : 1;
+
+                      if (columns == 1) {
+                        return ListView.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: AppSpacing.sm),
+                          itemBuilder: (context, index) {
+                            final load = filtered[index];
+                            return LoadCard(load: load, onTap: () => _openLoad(load));
+                          },
+                        );
+                      }
+
+                      return GridView.builder(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: columns,
+                          crossAxisSpacing: AppSpacing.sm,
+                          mainAxisSpacing: AppSpacing.sm,
+                          childAspectRatio: 1.55,
                         ),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final load = filtered[index];
+                          return LoadCard(load: load, onTap: () => _openLoad(load));
+                        },
                       );
                     },
                   );
@@ -132,7 +197,7 @@ class _LoadsScreenState extends State<LoadsScreen> {
       case _LoadFilter.fixed:
         return 'Fixed';
       case _LoadFilter.auto:
-        return 'Auto';
+        return 'Automatic';
       case _LoadFilter.on:
         return 'On';
       case _LoadFilter.off:
