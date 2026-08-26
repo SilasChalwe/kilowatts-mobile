@@ -5,9 +5,9 @@ import '../../../core/services/command_outcome.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/section_card.dart';
 
-/// Safe non-destructive Central operations exposed by the current firmware.
-/// Destructive factory-reset actions remain deliberately outside this screen.
 class InstallerOperationsScreen extends StatefulWidget {
   const InstallerOperationsScreen({super.key});
 
@@ -16,18 +16,28 @@ class InstallerOperationsScreen extends StatefulWidget {
       _InstallerOperationsScreenState();
 }
 
-class _InstallerOperationsScreenState
-    extends State<InstallerOperationsScreen> {
-  final _interval = TextEditingController(text: '300');
+class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
   bool _optimizing = false;
   bool _savingInterval = false;
+  bool _loadedInterval = false;
   String? _message;
   bool _messageIsError = false;
+  int? _lastAppliedInterval;
 
   @override
-  void dispose() {
-    _interval.dispose();
-    super.dispose();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadedInterval) return;
+    _loadedInterval = true;
+    _loadLastInterval();
+  }
+
+  Future<void> _loadLastInterval() async {
+    final value = await AppStateScope.of(
+      context,
+    ).readLastInstallerOptimizerIntervalSeconds();
+    if (!mounted) return;
+    setState(() => _lastAppliedInterval = value);
   }
 
   void _showOutcome(CommandOutcome outcome, String successText) {
@@ -42,39 +52,45 @@ class _InstallerOperationsScreenState
   Future<void> _runOptimization() async {
     setState(() {
       _optimizing = true;
-      _message = 'Requesting an immediate optimization cycle…';
-      _messageIsError = false;
+      _message = null;
     });
     final outcome = await AppStateScope.of(context).requestOptimizationCycle();
     if (!mounted) return;
     setState(() => _optimizing = false);
-    _showOutcome(outcome, 'Central accepted the optimization request.');
+    _showOutcome(outcome, 'Optimization request confirmed by Central.');
   }
 
-  Future<void> _saveInterval() async {
-    final seconds = int.tryParse(_interval.text.trim());
-    if (seconds == null || seconds < 5 || seconds > 86400) {
-      setState(() {
-        _messageIsError = true;
-        _message = 'Use an optimizer interval from 5 to 86,400 seconds.';
-      });
-      return;
-    }
+  Future<void> _changeInterval() async {
+    final seconds = await showDialog<int>(
+      context: context,
+      builder: (_) => _IntervalDialog(initial: _lastAppliedInterval),
+    );
+    if (seconds == null || !mounted) return;
 
     setState(() {
       _savingInterval = true;
-      _message = 'Sending optimizer interval to Central…';
-      _messageIsError = false;
+      _message = null;
     });
-    final outcome = await AppStateScope.of(
-      context,
-    ).setOptimizerIntervalSeconds(seconds);
+    final appState = AppStateScope.of(context);
+    final outcome = await appState.setOptimizerIntervalSeconds(seconds);
     if (!mounted) return;
-    setState(() => _savingInterval = false);
-    _showOutcome(outcome, 'Optimizer interval confirmed at ${_friendlyInterval(seconds)}.');
+
+    if (outcome.isConfirmed) {
+      await appState.cacheLastInstallerOptimizerIntervalSeconds(seconds);
+      if (!mounted) return;
+    }
+
+    setState(() {
+      _savingInterval = false;
+      if (outcome.isConfirmed) _lastAppliedInterval = seconds;
+    });
+    _showOutcome(
+      outcome,
+      'Optimization interval confirmed at ${_friendlyInterval(seconds)}.',
+    );
   }
 
-  String _friendlyInterval(int seconds) {
+  static String _friendlyInterval(int seconds) {
     if (seconds % 3600 == 0) return '${seconds ~/ 3600} h';
     if (seconds % 60 == 0) return '${seconds ~/ 60} min';
     return '$seconds s';
@@ -82,175 +98,178 @@ class _InstallerOperationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final appState = AppStateScope.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('System operations')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          children: [
-            const Text('Central operations', style: AppTextStyles.display),
-            const SizedBox(height: AppSpacing.xs),
-            const Text(
-              'Run Best-First Search on demand or control how frequently Central automatically re-evaluates load priorities.',
-              style: AppTextStyles.subtitle,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Container(
+        child: ValueListenableBuilder(
+          valueListenable: appState.systemState,
+          builder: (context, state, _) {
+            return ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              children: [
+                SectionCard(
+                  title: 'Best-First optimization',
+                  child: Column(
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: AppColors.info.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.auto_awesome_outlined,
-                          color: AppColors.info,
-                        ),
+                      SectionRow(
+                        label: 'Last optimization',
+                        value: Formatters.relativeTime(state?.lastOptimizationAt),
                       ),
-                      const SizedBox(width: AppSpacing.sm),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Best-First optimization', style: AppTextStyles.title),
-                            SizedBox(height: 2),
-                            Text(
-                              'Uses the latest battery budget, load priorities and schedules.',
-                              style: AppTextStyles.caption,
-                            ),
-                          ],
+                      const SizedBox(height: AppSpacing.sm),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          onPressed: _optimizing ? null : _runOptimization,
+                          icon: _optimizing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.play_arrow_rounded),
+                          label: Text(
+                            _optimizing ? 'Requesting…' : 'Run now',
+                          ),
                         ),
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SectionCard(
+                  title: 'Automatic optimization',
+                  child: Column(
+                    children: [
+                      SectionRow(
+                        label: 'Interval',
+                        value: _lastAppliedInterval == null
+                            ? 'Not published by Central'
+                            : '${_friendlyInterval(_lastAppliedInterval!)} · last applied here',
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: _savingInterval ? null : _changeInterval,
+                          icon: const Icon(Icons.edit_outlined),
+                          label: Text(
+                            _savingInterval ? 'Applying…' : 'Change interval',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_message != null) ...[
                   const SizedBox(height: AppSpacing.md),
-                  FilledButton.icon(
-                    onPressed: _optimizing ? null : _runOptimization,
-                    icon: _optimizing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.play_arrow_rounded),
-                    label: Text(
-                      _optimizing ? 'Waiting for Central…' : 'Run optimization now',
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: (_messageIsError ? AppColors.error : AppColors.success)
+                          .withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _message!,
+                      style: AppTextStyles.caption.copyWith(
+                        color: _messageIsError
+                            ? AppColors.error
+                            : AppColors.success,
+                      ),
                     ),
                   ),
                 ],
-              ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _IntervalDialog extends StatefulWidget {
+  const _IntervalDialog({this.initial});
+
+  final int? initial;
+
+  @override
+  State<_IntervalDialog> createState() => _IntervalDialogState();
+}
+
+class _IntervalDialogState extends State<_IntervalDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.initial == null ? '' : '${widget.initial}',
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _select(int seconds) {
+    setState(() => _controller.text = '$seconds');
+  }
+
+  void _save() {
+    final seconds = int.tryParse(_controller.text.trim());
+    if (seconds == null || seconds < 5 || seconds > 86400) return;
+    Navigator.of(context).pop(seconds);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = int.tryParse(_controller.text.trim());
+    return AlertDialog(
+      title: const Text('Change optimization interval'),
+      content: SizedBox(
+        width: 440,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                for (final preset in const [30, 60, 300, 900, 3600])
+                  ChoiceChip(
+                    label: Text(
+                      _InstallerOperationsScreenState._friendlyInterval(preset),
+                    ),
+                    selected: selected == preset,
+                    onSelected: (_) => _select(preset),
+                  ),
+              ],
             ),
             const SizedBox(height: AppSpacing.md),
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Automatic optimization interval', style: AppTextStyles.title),
-                  const SizedBox(height: AppSpacing.xs),
-                  const Text(
-                    'Choose a common interval or enter a custom value. Firmware accepts 5 seconds to 24 hours.',
-                    style: AppTextStyles.caption,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Wrap(
-                    spacing: AppSpacing.xs,
-                    runSpacing: AppSpacing.xs,
-                    children: [
-                      for (final preset in const [30, 60, 300, 900, 3600])
-                        ChoiceChip(
-                          label: Text(_friendlyInterval(preset)),
-                          selected: int.tryParse(_interval.text.trim()) == preset,
-                          onSelected: _savingInterval
-                              ? null
-                              : (_) => setState(() => _interval.text = '$preset'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 360),
-                    child: TextField(
-                      controller: _interval,
-                      enabled: !_savingInterval,
-                      onChanged: (_) => setState(() {}),
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Custom interval (seconds)',
-                        helperText: 'Default: 300 seconds (5 minutes)',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  FilledButton.icon(
-                    onPressed: _savingInterval ? null : _saveInterval,
-                    icon: _savingInterval
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.schedule_outlined),
-                    label: Text(
-                      _savingInterval ? 'Waiting for Central…' : 'Apply interval',
-                    ),
-                  ),
-                ],
+            TextField(
+              controller: _controller,
+              onChanged: (_) => setState(() {}),
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Custom interval (seconds)',
+                helperText: '5 to 86,400 seconds',
               ),
             ),
-            if (_message != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: (_messageIsError ? AppColors.error : AppColors.success)
-                      .withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _messageIsError
-                          ? Icons.error_outline_rounded
-                          : Icons.check_circle_outline_rounded,
-                      size: 18,
-                      color: _messageIsError ? AppColors.error : AppColors.success,
-                    ),
-                    const SizedBox(width: AppSpacing.xs),
-                    Expanded(
-                      child: Text(
-                        _message!,
-                        style: AppTextStyles.caption.copyWith(
-                          color: _messageIsError
-                              ? AppColors.error
-                              : AppColors.success,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Apply')),
+      ],
     );
   }
 }

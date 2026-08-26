@@ -2,15 +2,9 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Local, on-device persistence only. There is no backend for app/setup
-/// state — the embedded system's live state always comes from MQTT.
-///
-/// Used for two things:
-///  - remembering that first-time setup finished, so returning users skip
-///    straight to the dashboard.
-///  - caching the last retained system/loads payloads so a returning user
-///    with no connectivity yet sees their last-known state (clearly marked
-///    stale by the UI) instead of a blank screen.
+/// Local, on-device persistence only. Live embedded-system state always comes
+/// from MQTT; locally cached installer configuration is labelled as such in
+/// the UI and is never presented as fresh Central telemetry.
 class LocalStateService {
   static const _setupCompleteKey = 'kilowatts.setup_complete';
   static const _lastSystemStateKey = 'kilowatts.last_system_state';
@@ -18,6 +12,10 @@ class LocalStateService {
   static const _lastSyncedAtKey = 'kilowatts.last_synced_at';
   static const _nodeNameOverridesKey = 'kilowatts.node_name_overrides';
   static const _alertsKey = 'kilowatts.alerts';
+  static const _installerSafetyConfigKey = 'kilowatts.installer.safety_config';
+  static const _installerBatteryConfigKey = 'kilowatts.installer.battery_config';
+  static const _installerOptimizerIntervalKey =
+      'kilowatts.installer.optimizer_interval_seconds';
 
   Future<bool> isSetupComplete() async {
     final prefs = await SharedPreferences.getInstance();
@@ -42,13 +40,7 @@ class LocalStateService {
 
   Future<Map<String, dynamic>?> readCachedSystemState() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_lastSystemStateKey);
-    if (raw == null) return null;
-    try {
-      return (jsonDecode(raw) as Map).cast<String, dynamic>();
-    } catch (_) {
-      return null;
-    }
+    return _readJsonMap(prefs.getString(_lastSystemStateKey));
   }
 
   Future<List<Map<String, dynamic>>?> readCachedLoads() async {
@@ -78,10 +70,6 @@ class LocalStateService {
     await prefs.remove(_setupCompleteKey);
   }
 
-  /// Locally-remembered friendly names for nodes, keyed by MAC. This is a
-  /// device-local convenience only — there is no firmware "rename node"
-  /// command in the current MQTT contract, so this never claims to have
-  /// changed anything on the Central Node itself.
   Future<Map<String, String>> readNodeNameOverrides() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_nodeNameOverridesKey);
@@ -100,9 +88,6 @@ class LocalStateService {
     await prefs.setString(_nodeNameOverridesKey, jsonEncode(overrides));
   }
 
-  /// Alerts have no server-side history — this is the only reason a
-  /// returning user still sees anything older than what streamed in since
-  /// this app launch (including which ones were already marked read).
   Future<void> cacheAlerts(List<Map<String, dynamic>> alerts) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_alertsKey, jsonEncode(alerts));
@@ -118,6 +103,57 @@ class LocalStateService {
           .whereType<Map>()
           .map((e) => e.cast<String, dynamic>())
           .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> cacheInstallerSafetyConfig(Map<String, dynamic> values) async {
+    await _writeInstallerSnapshot(_installerSafetyConfigKey, values);
+  }
+
+  Future<Map<String, dynamic>?> readInstallerSafetyConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _readJsonMap(prefs.getString(_installerSafetyConfigKey));
+  }
+
+  Future<void> cacheInstallerBatteryConfig(Map<String, dynamic> values) async {
+    await _writeInstallerSnapshot(_installerBatteryConfigKey, values);
+  }
+
+  Future<Map<String, dynamic>?> readInstallerBatteryConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _readJsonMap(prefs.getString(_installerBatteryConfigKey));
+  }
+
+  Future<void> cacheInstallerOptimizerIntervalSeconds(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_installerOptimizerIntervalKey, seconds);
+  }
+
+  Future<int?> readInstallerOptimizerIntervalSeconds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_installerOptimizerIntervalKey);
+  }
+
+  Future<void> _writeInstallerSnapshot(
+    String key,
+    Map<String, dynamic> values,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      key,
+      jsonEncode({
+        ...values,
+        'savedAt': DateTime.now().toIso8601String(),
+      }),
+    );
+  }
+
+  Map<String, dynamic>? _readJsonMap(String? raw) {
+    if (raw == null) return null;
+    try {
+      return (jsonDecode(raw) as Map).cast<String, dynamic>();
     } catch (_) {
       return null;
     }

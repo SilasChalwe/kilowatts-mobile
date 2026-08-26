@@ -8,10 +8,6 @@ import '../widgets/safety_parameter_field.dart';
 import '../widgets/setup_progress_indicator.dart';
 import 'branch_load_configuration_screen.dart';
 
-/// Firmware does not yet publish a `config/system` topic, so there is no
-/// live "physical maximum" ceiling to show here — this screen only ever
-/// captures the user's draft, which is submitted (and honestly rejected
-/// today, see `MqttService.sendSafetyConfig`) at Setup Summary.
 class SafetyConfigurationScreen extends StatefulWidget {
   const SafetyConfigurationScreen({required this.setupSession, super.key});
 
@@ -30,7 +26,7 @@ class _SafetyConfigurationScreenState extends State<SafetyConfigurationScreen> {
     final draft = widget.setupSession.safety;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Safety Thresholds')),
+      appBar: AppBar(title: const Text('Safety thresholds')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -40,56 +36,41 @@ class _SafetyConfigurationScreenState extends State<SafetyConfigurationScreen> {
               const SetupProgressIndicator(step: 3, title: 'Safety Thresholds'),
               const SizedBox(height: AppSpacing.lg),
               SectionCard(
-                title: 'Battery Protection',
+                title: 'Battery policy',
                 child: Column(
                   children: [
                     SafetyParameterField(
-                      label: 'Low Battery Cutoff',
-                      description:
-                          'Minimum battery % before Auto loads are shed',
+                      label: 'Minimum state of charge',
+                      description: 'Auto-load cutoff level',
                       unit: '%',
                       initialValue: draft.lowBatteryCutoffPercent,
                       onChanged: (v) => draft.lowBatteryCutoffPercent = v,
                     ),
                     SafetyParameterField(
-                      label: 'Low Battery Warning',
-                      description: 'Battery % that raises a warning alert',
-                      unit: '%',
-                      initialValue: draft.lowBatteryWarningPercent,
-                      onChanged: (v) => draft.lowBatteryWarningPercent = v,
-                    ),
-                    SafetyParameterField(
-                      label: 'Target Runtime',
-                      description: 'Hours of reserve the system aims to keep',
+                      label: 'Required runtime',
+                      description: 'Battery runtime target',
                       unit: 'h',
                       initialValue: draft.targetRuntimeHours,
                       onChanged: (v) => draft.targetRuntimeHours = v,
-                    ),
-                    SafetyParameterField(
-                      label: 'Safety Margin',
-                      description: 'Extra headroom kept in reserve',
-                      unit: '%',
-                      initialValue: draft.safetyMarginPercent,
-                      onChanged: (v) => draft.safetyMarginPercent = v,
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
               SectionCard(
-                title: 'Current Limits',
+                title: 'Current limits',
                 child: Column(
                   children: [
                     SafetyParameterField(
-                      label: 'Max Battery Discharge Current',
-                      description: 'Battery-side operating limit',
+                      label: 'Maximum battery discharge',
+                      description: 'Battery current limit',
                       unit: 'A',
                       initialValue: draft.maxBatteryDischargeCurrentA,
                       onChanged: (v) => draft.maxBatteryDischargeCurrentA = v,
                     ),
                     SafetyParameterField(
-                      label: 'Main Current Limit',
-                      description: 'System-wide operating limit',
+                      label: 'Maximum main current',
+                      description: 'Main distribution limit',
                       unit: 'A',
                       initialValue: draft.mainCurrentLimitA,
                       onChanged: (v) => draft.mainCurrentLimitA = v,

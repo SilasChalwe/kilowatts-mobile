@@ -29,10 +29,7 @@ void main() {
       name: 'Kitchen fan',
       relayPin: 4,
       relayActiveHigh: false,
-      nominalVoltageVolts: 12,
-      nominalCurrentAmps: 1.5,
-      branchMaximumCurrentAmps: 5,
-      startupWatts: 24,
+      powerRatingWatts: 18,
       priority: 7,
       mode: LoadMode.auto,
     );
