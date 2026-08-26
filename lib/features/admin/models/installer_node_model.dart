@@ -76,22 +76,16 @@ enum InstallerLoadPowerType {
   String get wireValue => this == InstallerLoadPowerType.ac ? 'AC' : 'DC';
 }
 
-/// Physical/planning facts required by firmware CONFIGURE_LOAD.
-///
-/// Existing installer forms still collect nameplate voltage/current because
-/// those values are useful during commissioning. The MQTT contract itself
-/// receives the resulting `powerRatingWatts`, plus AC/DC power type, relay
-/// polarity, priority, mode and schedule.
+/// Physical/planning facts accepted by the current firmware
+/// `CONFIGURE_LOAD` command. The installer UI should not ask for values that
+/// are not transmitted or persisted by this contract.
 class InstallerLoadConfiguration {
   const InstallerLoadConfiguration({
     required this.nodeMac,
     required this.name,
     required this.relayPin,
     required this.relayActiveHigh,
-    required this.nominalVoltageVolts,
-    required this.nominalCurrentAmps,
-    required this.branchMaximumCurrentAmps,
-    required this.startupWatts,
+    required this.powerRatingWatts,
     required this.priority,
     required this.mode,
     this.powerType = InstallerLoadPowerType.dc,
@@ -102,16 +96,11 @@ class InstallerLoadConfiguration {
   final String name;
   final int relayPin;
   final bool relayActiveHigh;
-  final double nominalVoltageVolts;
-  final double nominalCurrentAmps;
-  final double branchMaximumCurrentAmps;
-  final double startupWatts;
+  final double powerRatingWatts;
   final int priority;
   final LoadMode mode;
   final InstallerLoadPowerType powerType;
   final LoadSchedule schedule;
-
-  double get powerRatingWatts => nominalVoltageVolts * nominalCurrentAmps;
 
   Map<String, dynamic> toCommandPayload() => {
     'nodeMac': nodeMac,
