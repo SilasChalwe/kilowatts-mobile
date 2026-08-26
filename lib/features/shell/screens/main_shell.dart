@@ -181,7 +181,10 @@ class _MainShellState extends State<MainShell> {
           }
 
           return Scaffold(
-            appBar: AppBar(title: Text(pages[effectiveIndex].label)),
+            appBar: AppBar(
+              titleSpacing: AppSpacing.sm,
+              title: const Text('Kilowatts'),
+            ),
             drawer: _WebDrawer(
               installerMode: widget.installerMode,
               pages: pages,
