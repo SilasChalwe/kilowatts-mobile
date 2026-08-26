@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../models/alert_model.dart';
@@ -11,9 +10,6 @@ import '../widgets/alert_card.dart';
 
 enum _AlertFilter { all, critical, warning, info }
 
-/// Alerts are a local operational inbox for events received from Central.
-/// Acknowledgement is intentionally local because the firmware has no remote
-/// alert acknowledgement contract.
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
 
@@ -54,18 +50,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    PageHeader(
-                      title: 'Alerts',
-                      actions: [
-                        if (alerts.isNotEmpty)
-                          OutlinedButton.icon(
-                            onPressed: appState.acknowledgeAllAlerts,
-                            icon: const Icon(Icons.done_all_rounded, size: 18),
-                            label: const Text('Mark all read'),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
+                    if (alerts.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: appState.acknowledgeAllAlerts,
+                          icon: const Icon(Icons.done_all_rounded, size: 18),
+                          label: const Text('Mark all read'),
+                        ),
+                      ),
+                    if (alerts.isNotEmpty)
+                      const SizedBox(height: AppSpacing.md),
                     SectionCard(
                       padding: const EdgeInsets.all(AppSpacing.sm),
                       child: Wrap(
