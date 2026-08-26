@@ -60,7 +60,7 @@ class AppState {
   final ValueNotifier<List<double>> batteryPowerSamples = ValueNotifier(
     const [],
   );
-  final ValueNotifier<List<double>> committedPowerSamples = ValueNotifier(
+  final ValueNotifier<List<double>> activeLoadPowerSamples = ValueNotifier(
     const [],
   );
 
@@ -84,7 +84,7 @@ class AppState {
         lastLiveSystemUpdate.value = DateTime.now();
         _appendSample(socSamples, state.batterySocPercent);
         _appendSample(batteryPowerSamples, state.batteryPowerW);
-        _appendSample(committedPowerSamples, state.committedPowerW);
+        _appendSample(activeLoadPowerSamples, state.estimatedTotalLoadPowerW);
       }),
     );
     _subscriptions.add(
@@ -263,25 +263,22 @@ class AppState {
     stateOfChargePercent: stateOfChargePercent,
   );
 
-  void acknowledgeAllAlerts() {
-    alerts.value = [
-      for (final alert in alerts.value) alert.copyWith(acknowledged: true),
-    ];
-    unawaited(_persistAlerts());
-  }
-
-  Future<bool> isSetupComplete() => _localState.isSetupComplete();
-  Future<void> setSetupComplete(bool value) =>
-      _localState.setSetupComplete(value);
-  Future<void> setNodeNameOverride(String mac, String name) =>
-      _localState.setNodeNameOverride(mac, name);
-
-  Stream<User?> get userChanges => authService.userChanges;
-  User? get currentUser => authService.currentUser;
-  Future<void> signOut() => authService.signOut();
-
-  Future<InstallationAccess> resolveCurrentAccess() =>
-      _accessControlService.resolve(currentUser);
+  Future<CommandOutcome> configureBatterySensorForSetup({
+    required String centralNodeMac,
+    required double nominalVoltageVolts,
+    required double maximumExpectedCurrentAmps,
+    required double batteryCapacityAmpHours,
+    required double initialStateOfChargePercent,
+  }) => configureBatterySensor(
+    centralNodeMac: centralNodeMac,
+    i2cAddress: 0x40,
+    shuntResistanceOhms: 0.1,
+    nominalVoltageVolts: nominalVoltageVolts,
+    maximumExpectedCurrentAmps: maximumExpectedCurrentAmps,
+    emaAlpha: 0.2,
+    batteryCapacityAmpHours: batteryCapacityAmpHours,
+    initialStateOfChargePercent: initialStateOfChargePercent,
+  );
 
   Stream<List<KilowattsUserAccess>> watchAccessUsers() =>
       _accessControlService.watchUsers();
@@ -299,11 +296,32 @@ class AppState {
   Future<void> revokeAccess(String email) =>
       _accessControlService.revokeAccess(email);
 
+  Future<void> acknowledgeAlert(String id) async {
+    alerts.value = [
+      for (final alert in alerts.value)
+        if (alert.id == id) alert.copyWith(acknowledged: true) else alert,
+    ];
+    await _persistAlerts();
+  }
+
+  Future<void> acknowledgeAllAlerts() async {
+    alerts.value = [
+      for (final alert in alerts.value) alert.copyWith(acknowledged: true),
+    ];
+    await _persistAlerts();
+  }
+
+  User? get currentUser => authService.currentUser;
+
+  Future<void> signOut() async {
+    await _mqtt.disconnect();
+    await authService.signOut();
+  }
+
   void dispose() {
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
-    _mqtt.dispose();
     connectionStatus.dispose();
     systemState.dispose();
     lastLiveSystemUpdate.dispose();
@@ -313,6 +331,6 @@ class AppState {
     installerNodes.dispose();
     socSamples.dispose();
     batteryPowerSamples.dispose();
-    committedPowerSamples.dispose();
+    activeLoadPowerSamples.dispose();
   }
 }
