@@ -17,7 +17,7 @@ class MqttTopics {
   String get commandsLoad => '$namespace/commands/load';
   String get commandsSystem => '$namespace/commands/system';
   String get commandsConfig => '$namespace/commands/config';
-  String get commandsDevelopment => '$namespace/commands/development';
+  String get commandsSimulation => '$namespace/commands/simulation';
   String get acks => '$namespace/acks';
 
   List<String> get subscriptions => [

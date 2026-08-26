@@ -36,14 +36,8 @@ class GraphicalTopologyTree extends StatelessWidget {
   static const double _hGap = 28;
   static const double _vGap = 48;
 
-  LoadModel? _loadFor(String nodeMac, int relayPin) {
-    for (final load in loads) {
-      if (load.owningNodeMac == nodeMac && load.relayPin == relayPin) {
-        return load;
-      }
-    }
-    return null;
-  }
+  List<LoadModel> _loadsOwnedBy(String nodeMac) =>
+      loads.where((load) => load.owningNodeMac == nodeMac).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -97,12 +91,11 @@ class GraphicalTopologyTree extends StatelessWidget {
   _LaidOutNode _layoutNode(NodeModel node, {required int depth, required _Cell nextSlot}) {
     final childNodes = <_LaidOutNode>[];
 
-    for (final branch in topology.branchesOf(node.mac)) {
-      final load = _loadFor(branch.owningNodeMac, branch.relayPin);
+    for (final load in _loadsOwnedBy(node.mac)) {
       childNodes.add(
         _LaidOutNode(
           titleLine1: 'DC Load',
-          titleLine2: load?.name ?? branch.name ?? 'Pin ${branch.relayPin}',
+          titleLine2: load.name,
           slot: nextSlot.value.toDouble(),
           depth: depth + 1,
           load: load,

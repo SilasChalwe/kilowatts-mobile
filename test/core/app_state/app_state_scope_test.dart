@@ -5,11 +5,17 @@ import 'package:kilowatts_mobile/core/app_state/app_state.dart';
 import 'package:kilowatts_mobile/core/app_state/app_state_scope.dart';
 import 'package:kilowatts_mobile/core/services/local_state_service.dart';
 import 'package:kilowatts_mobile/core/services/mqtt_service.dart';
+import 'package:kilowatts_mobile/features/auth/data/access_control_service.dart';
 import 'package:kilowatts_mobile/features/auth/data/auth_service.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
+
+/// AppState's default AccessControlService touches FirebaseFirestore.instance,
+/// which has no real Firebase app in a test sandbox — this test never
+/// exercises role resolution, so an unstubbed mock just needs to exist.
+class _MockAccessControlService extends Mock implements AccessControlService {}
 
 /// Guards against regressing the exact compile break this pass fixed:
 /// `KilowattsApp`/`AppRouter` previously threaded three raw services by
@@ -29,6 +35,7 @@ void main() {
       authService: AuthService(firebaseAuth: auth),
       mqttService: MqttService(),
       localStateService: LocalStateService(),
+      accessControlService: _MockAccessControlService(),
     );
     addTearDown(appState.dispose);
 

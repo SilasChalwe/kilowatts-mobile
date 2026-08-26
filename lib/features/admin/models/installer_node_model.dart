@@ -61,7 +61,10 @@ class InstallerNodeModel {
   }
 
   factory InstallerNodeModel.fromJson(Map<String, dynamic> json) {
-    final rawPins = json['relayCapabilities'];
+    // Firmware (NodeRegistryJson::buildStateNodesJson) emits the node's
+    // friendly name as "nodeName" and its unused-pin inventory as
+    // "availableRelayPins" — not "name" / "relayCapabilities".
+    final rawPins = json['availableRelayPins'];
     return InstallerNodeModel(
       mac: json.stringOrNull('mac') ?? '',
       // Firmware emits lifecycle text in lowercase; normalize at the wire
@@ -70,7 +73,7 @@ class InstallerNodeModel {
       lifecycleState:
           (json.stringOrNull('lifecycleState') ?? 'UNKNOWN').toUpperCase(),
       syncState: (json.stringOrNull('syncState') ?? 'UNKNOWN').toUpperCase(),
-      name: json.stringOrNull('name'),
+      name: json.stringOrNull('nodeName'),
       firmwareVersion: json.stringOrNull('firmwareVersion'),
       chipModel: json.stringOrNull('chipModel'),
       availableRelayPins: rawPins is List
@@ -82,6 +85,9 @@ class InstallerNodeModel {
       online: json.boolOrNull('online'),
       hopCountToCentral: json.intOrNull('hopCountToCentral'),
       nextHopMac: json.stringOrNull('nextHopMac'),
+      // Firmware does not currently publish a per-node last-seen timestamp
+      // in state/nodes (see NodeRegistryJson::buildStateNodesJson); prefer
+      // [online] for status display until that is added.
       lastSeenMillisecondsSinceBoot: json.intOrNull('lastSeenMilliseconds'),
     );
   }

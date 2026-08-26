@@ -6,6 +6,7 @@ import 'package:kilowatts_mobile/core/app_state/app_state.dart';
 import 'package:kilowatts_mobile/core/services/local_state_service.dart';
 import 'package:kilowatts_mobile/core/services/mqtt_service.dart';
 import 'package:kilowatts_mobile/features/alerts/models/alert_model.dart';
+import 'package:kilowatts_mobile/features/auth/data/access_control_service.dart';
 import 'package:kilowatts_mobile/features/auth/data/auth_service.dart';
 import 'package:kilowatts_mobile/features/loads/models/load_model.dart';
 import 'package:kilowatts_mobile/features/system/models/system_state_model.dart';
@@ -15,16 +16,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
 
+/// AppState's default AccessControlService touches FirebaseFirestore.instance,
+/// which has no real Firebase app in a test sandbox — these tests never
+/// exercise role resolution, so an unstubbed mock just needs to exist.
+class _MockAccessControlService extends Mock implements AccessControlService {}
+
 /// Overrides only the stream getters/command methods AppState touches — the
 /// real [MqttService] owns a live broker socket, which tests must never
 /// create. Not behind an abstract interface (deliberately, per this pass's
 /// scoping) so this subclasses the concrete class instead.
 class _FakeMqttService extends MqttService {
-  final systemStateController = StreamController<SystemStateModel>.broadcast();
-  final topologyController = StreamController<TopologyModel>.broadcast();
-  final loadsController = StreamController<List<LoadModel>>.broadcast();
-  final alertController = StreamController<AlertModel>.broadcast();
-  final connectionStatusController = StreamController<MqttConnectionStatus>.broadcast();
+  // sync: true - these tests assert immediately after .add() with no await,
+  // so listeners must fire synchronously within add() rather than on a
+  // later microtask (the default for a broadcast StreamController).
+  final systemStateController = StreamController<SystemStateModel>.broadcast(sync: true);
+  final topologyController = StreamController<TopologyModel>.broadcast(sync: true);
+  final loadsController = StreamController<List<LoadModel>>.broadcast(sync: true);
+  final alertController = StreamController<AlertModel>.broadcast(sync: true);
+  final connectionStatusController = StreamController<MqttConnectionStatus>.broadcast(sync: true);
 
   @override
   Stream<SystemStateModel> get systemStateStream => systemStateController.stream;
@@ -68,6 +77,7 @@ void main() {
       authService: AuthService(firebaseAuth: auth),
       mqttService: mqtt,
       localStateService: LocalStateService(),
+      accessControlService: _MockAccessControlService(),
     );
   });
 

@@ -9,7 +9,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_text_field.dart';
-import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/secondary_button.dart';
@@ -55,9 +54,14 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
   bool _useTls = true;
   bool _savingConnection = false;
   bool _testingConnection = false;
-  bool _togglingDevelopmentSession = false;
   int _selectedIndex = 0;
   bool _didInitialize = false;
+
+  final _simVoltageController = TextEditingController();
+  final _simCurrentController = TextEditingController();
+  final _simSocController = TextEditingController();
+  bool _togglingSimulation = false;
+  bool _applyingSimulationValues = false;
 
   @override
   void didChangeDependencies() {
@@ -97,7 +101,53 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
     _topicNamespaceController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _simVoltageController.dispose();
+    _simCurrentController.dispose();
+    _simSocController.dispose();
     super.dispose();
+  }
+
+  Future<void> _setSimulationSource(bool simulated) async {
+    setState(() => _togglingSimulation = true);
+    final outcome = await AppStateScope.of(
+      context,
+    ).setSimulationEnabled(simulated);
+    if (!mounted) return;
+    setState(() => _togglingSimulation = false);
+    _showMessage(
+      outcome.status == CommandStatus.confirmed
+          ? (simulated
+                ? 'Switched to simulated battery readings.'
+                : 'Switched to INA219 hardware readings.')
+          : outcome.message ?? 'Central rejected the request.',
+    );
+  }
+
+  Future<void> _applySimulationValues() async {
+    final voltage = double.tryParse(_simVoltageController.text.trim());
+    final current = double.tryParse(_simCurrentController.text.trim());
+    final soc = double.tryParse(_simSocController.text.trim());
+    if (voltage == null && current == null && soc == null) {
+      _showMessage('Enter at least one simulated value.');
+      return;
+    }
+    if ((voltage == null) != (current == null)) {
+      _showMessage('Voltage and current must be set together.');
+      return;
+    }
+    setState(() => _applyingSimulationValues = true);
+    final outcome = await AppStateScope.of(context).setSimulationValues(
+      batteryVoltageVolts: voltage,
+      batteryCurrentAmps: current,
+      stateOfChargePercent: soc,
+    );
+    if (!mounted) return;
+    setState(() => _applyingSimulationValues = false);
+    _showMessage(
+      outcome.status == CommandStatus.confirmed
+          ? 'Simulated values applied.'
+          : outcome.message ?? 'Central rejected the request.',
+    );
   }
 
   MqttConfig? _readConnectionForm() {
@@ -149,49 +199,6 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
           ? 'Broker connection succeeded.'
           : 'Broker test failed: ${_connectionLabel(result)}.',
     );
-  }
-
-  /// Starts or ends Central's Development Session — the only thing that
-  /// switches the whole installation's Operating Environment between
-  /// PRODUCTION and DEVELOPMENT (see [DevelopmentModeBadge], which is what
-  /// the homeowner app shows as a result). Confirmed first since starting a
-  /// session means every reading published afterwards is simulated, not
-  /// real hardware, until explicitly ended.
-  Future<void> _toggleDevelopmentSession(
-    String centralNodeMac,
-    bool start,
-  ) async {
-    final confirmed = await ConfirmationDialog.show(
-      context,
-      title: start ? 'Start Development Session?' : 'End Development Session?',
-      message: start
-          ? 'Switch to DEVELOPMENT mode?'
-          : 'Switch to PRODUCTION mode?',
-      confirmLabel: start ? 'Start session' : 'End session',
-      isDestructive: !start,
-    );
-    if (!confirmed || !mounted) return;
-
-    setState(() => _togglingDevelopmentSession = true);
-    final outcome = await AppStateScope.of(
-      context,
-    ).setDevelopmentSession(centralNodeMac: centralNodeMac, start: start);
-    if (!mounted) return;
-    setState(() => _togglingDevelopmentSession = false);
-    _showMessage(
-      outcome.status == CommandStatus.confirmed
-          ? (start
-                ? 'Development Session started.'
-                : 'Development Session ended.')
-          : outcome.message ?? 'Central rejected the request.',
-    );
-  }
-
-  InstallerNodeModel? _findCentralNode(List<InstallerNodeModel> nodes) {
-    for (final node in nodes) {
-      if (node.isCentralNode) return node;
-    }
-    return null;
   }
 
   void _showMessage(String text) {
@@ -368,12 +375,7 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
     final appState = AppStateScope.of(context);
     return ListView(
       children: [
-        const Text('Installation overview', style: AppTextStyles.display),
-        const SizedBox(height: AppSpacing.xs),
-        const Text(
-          'Live broker status, discovered hardware and commissioning progress.',
-          style: AppTextStyles.subtitle,
-        ),
+        const Text('Overview', style: AppTextStyles.display),
         const SizedBox(height: AppSpacing.md),
         AnimatedBuilder(
           animation: Listenable.merge([
@@ -427,22 +429,23 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
                       ? StatusTone.positive
                       : StatusTone.warning)
                 : _connectionTone(status);
-            return Wrap(
-              spacing: AppSpacing.md,
-              runSpacing: AppSpacing.md,
-              children: [
-                _metricTile('Broker', brokerLabel, brokerTone),
-                ValueListenableBuilder<List<InstallerNodeModel>>(
-                  valueListenable: appState.installerNodes,
-                  builder: (context, nodes, _) => _metricTile(
-                    'Discovered nodes',
-                    '${nodes.length}',
-                    StatusTone.info,
+            return ValueListenableBuilder(
+              valueListenable: appState.systemState,
+              builder: (context, state, _) => Wrap(
+                spacing: AppSpacing.md,
+                runSpacing: AppSpacing.md,
+                children: [
+                  _metricTile('Broker', brokerLabel, brokerTone),
+                  _metricTile(
+                    'Wi-Fi',
+                    state?.wifiConnected == true
+                        ? (state?.wifiState ?? 'Connected')
+                        : 'Disconnected',
+                    state?.wifiConnected == true
+                        ? StatusTone.positive
+                        : StatusTone.negative,
                   ),
-                ),
-                ValueListenableBuilder(
-                  valueListenable: appState.systemState,
-                  builder: (context, state, _) => _metricTile(
+                  _metricTile(
                     'Battery sensor',
                     state?.batterySensorConfigured == true
                         ? 'Configured'
@@ -451,8 +454,160 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
                         ? StatusTone.positive
                         : StatusTone.warning,
                   ),
-                ),
-              ],
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        ValueListenableBuilder(
+          valueListenable: appState.systemState,
+          builder: (context, state, _) {
+            // A numeric 0 is what firmware sends when nothing has ever
+            // measured the battery (see PowerManager's default state), not
+            // a real "empty battery" reading — only trust it once a real
+            // source (HARDWARE or SIMULATED) is actually active.
+            final hasBattery =
+                state?.batterySocPercent != null &&
+                state?.sensorInputSource != null &&
+                state?.sensorInputSource != 'NONE';
+            final simulated = state?.sensorInputSource == 'SIMULATED';
+            return SectionCard(
+              title: 'Battery',
+              trailing: _togglingSimulation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : _SourceToggle(
+                      simulated: simulated,
+                      onChanged: _setSimulationSource,
+                    ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  hasBattery
+                      ? Wrap(
+                          spacing: AppSpacing.lg,
+                          runSpacing: AppSpacing.sm,
+                          children: [
+                            _statLine(
+                              'State of charge',
+                              '${state!.batterySocPercent!.toStringAsFixed(0)}%',
+                            ),
+                            _statLine(
+                              'Voltage',
+                              '${state.batteryVoltage?.toStringAsFixed(2) ?? '—'} V',
+                            ),
+                            _statLine(
+                              'Current',
+                              '${state.batteryCurrent?.toStringAsFixed(2) ?? '—'} A',
+                            ),
+                          ],
+                        )
+                      : const Text(
+                          'No battery reading yet.',
+                          style: AppTextStyles.caption,
+                        ),
+                  if (simulated) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    const Divider(height: 1),
+                    const SizedBox(height: AppSpacing.md),
+                    const Text(
+                      'Set simulated battery readings',
+                      style: AppTextStyles.caption,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      crossAxisAlignment: WrapCrossAlignment.end,
+                      children: [
+                        SizedBox(
+                          width: 140,
+                          child: AppTextField(
+                            label: 'Voltage (V)',
+                            controller: _simVoltageController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 140,
+                          child: AppTextField(
+                            label: 'Current (A)',
+                            controller: _simCurrentController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 140,
+                          child: AppTextField(
+                            label: 'SoC (%)',
+                            controller: _simSocController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 120,
+                          height: 48,
+                          child: SecondaryButton(
+                            label: _applyingSimulationValues
+                                ? 'Applying…'
+                                : 'Apply',
+                            onPressed: _applyingSimulationValues
+                                ? null
+                                : _applySimulationValues,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        ValueListenableBuilder(
+          valueListenable: appState.systemState,
+          builder: (context, state, _) {
+            final hasPower = state?.availablePowerW != null;
+            return SectionCard(
+              title: 'Power budget',
+              child: hasPower
+                  ? Wrap(
+                      spacing: AppSpacing.lg,
+                      runSpacing: AppSpacing.sm,
+                      children: [
+                        _statLine(
+                          'Available',
+                          '${state!.availablePowerW!.toStringAsFixed(1)} W',
+                        ),
+                        _statLine(
+                          'Fixed ON',
+                          '${state.fixedLoadPowerW?.toStringAsFixed(1) ?? '—'} W',
+                        ),
+                        _statLine(
+                          'Auto selected',
+                          '${state.autoLoadPowerW?.toStringAsFixed(1) ?? '—'} W',
+                        ),
+                        _statLine(
+                          'Remaining',
+                          '${state.remainingPowerW?.toStringAsFixed(1) ?? '—'} W',
+                        ),
+                      ],
+                    )
+                  : const Text(
+                      'Not available until the battery is reporting.',
+                      style: AppTextStyles.caption,
+                    ),
             );
           },
         ),
@@ -460,78 +615,36 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
         ValueListenableBuilder<List<InstallerNodeModel>>(
           valueListenable: appState.installerNodes,
           builder: (context, nodes, _) {
-            final centralNode = _findCentralNode(nodes);
+            final online = nodes.where((n) => n.online == true).length;
+            final commissioned = nodes.where((n) => n.isCommissioned).length;
             return ValueListenableBuilder(
-              valueListenable: appState.systemState,
-              builder: (context, state, _) {
-                final isDevelopment =
-                    state?.operatingEnvironment == 'DEVELOPMENT';
+              valueListenable: appState.loads,
+              builder: (context, loads, _) {
+                final fixedCount = loads
+                    .where((l) => l.mode == LoadMode.fixed)
+                    .length;
+                final autoCount = loads
+                    .where((l) => l.mode == LoadMode.auto)
+                    .length;
                 return SectionCard(
-                  title: 'Development mode',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  title: 'Nodes and loads',
+                  child: Wrap(
+                    spacing: AppSpacing.lg,
+                    runSpacing: AppSpacing.sm,
                     children: [
-                      Row(
-                        children: [
-                          StatusBadge(
-                            label: isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION',
-                            tone: isDevelopment
-                                ? StatusTone.warning
-                                : StatusTone.positive,
-                          ),
-                          const Spacer(),
-                          if (centralNode == null)
-                            const Text(
-                              'Central Node not discovered yet.',
-                              style: AppTextStyles.caption,
-                            )
-                          else if (_togglingDevelopmentSession)
-                            const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            SizedBox(
-                              width: 220,
-                              child: SecondaryButton(
-                                label: isDevelopment
-                                    ? 'End Development Session'
-                                    : 'Start Development Session',
-                                onPressed: () => _toggleDevelopmentSession(
-                                  centralNode.mac,
-                                  !isDevelopment,
-                                ),
-                              ),
-                            ),
-                        ],
+                      _statLine('Nodes online', '$online / ${nodes.length}'),
+                      _statLine(
+                        'Commissioned',
+                        '$commissioned / ${nodes.length}',
                       ),
+                      _statLine('Loads (Fixed)', '$fixedCount'),
+                      _statLine('Loads (Auto)', '$autoCount'),
                     ],
                   ),
                 );
               },
             );
           },
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        SectionCard(
-          title: 'Commissioning order',
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('1. Connect this portal to the installation broker.'),
-              SizedBox(height: AppSpacing.xs),
-              Text('2. Commission each ESP-NOW-discovered Smart Node.'),
-              SizedBox(height: AppSpacing.xs),
-              Text(
-                '3. Add verified relay, rated voltage/current, branch limit and startup facts for each load.',
-              ),
-              SizedBox(height: AppSpacing.xs),
-              Text(
-                '4. Apply the battery safety policy before enabling Auto loads.',
-              ),
-            ],
-          ),
         ),
       ],
     );
@@ -551,6 +664,20 @@ class _InstallerPortalScreenState extends State<InstallerPortalScreen> {
             StatusBadge(label: value, tone: tone),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _statLine(String label, String value) {
+    return SizedBox(
+      width: 140,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTextStyles.caption),
+          const SizedBox(height: 2),
+          Text(value, style: AppTextStyles.title),
+        ],
       ),
     );
   }
@@ -954,6 +1081,61 @@ class _PortalDestination {
 
   final String label;
   final IconData icon;
+}
+
+/// Two-way switch between Central's battery measurement sources — real
+/// INA219 hardware or simulated readings. Neither side of the app needs to
+/// know which is active beyond this control and the resulting numbers.
+class _SourceToggle extends StatelessWidget {
+  const _SourceToggle({required this.simulated, required this.onChanged});
+
+  final bool simulated;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _segment(context, 'INA219', !simulated, () => onChanged(false)),
+          _segment(context, 'Simulated', simulated, () => onChanged(true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(
+    BuildContext context,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: selected ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyles.caption.copyWith(
+            color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ConfigureLoadDialog extends StatefulWidget {

@@ -500,22 +500,41 @@ class MqttService {
     });
   }
 
-  /// Starts or ends Central's Development Session (commands/development,
-  /// action START_SESSION/END_SESSION) — the only way the whole device's
-  /// Operating Environment (see [SystemStateModel.operatingEnvironment])
-  /// switches between PRODUCTION and DEVELOPMENT. Installer-only by policy:
-  /// this is called exclusively from the installer-only Flutter Web portal,
-  /// never from the homeowner mobile app, which only ever displays the
-  /// resulting state.
-  Future<CommandOutcome> setDevelopmentSession({
-    required String centralNodeMac,
-    required bool start,
+  /// Switches Central's battery measurement source between simulated and
+  /// real INA219 (commands/simulation, action ENABLE/DISABLE) — matches
+  /// `MqttManager::handleSimulationCommandMessage` /
+  /// `SimulationCommandAction` in the firmware exactly. Neither the
+  /// installer portal nor the homeowner app need to know which source is
+  /// active beyond this switch and the resulting readings.
+  Future<CommandOutcome> setSimulationEnabled(bool enabled) {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.commandsSimulation, commandId, {
+      'commandId': commandId,
+      'action': enabled ? 'ENABLE' : 'DISABLE',
+    });
+  }
+
+  /// Sets simulated battery readings while simulation is enabled
+  /// (commands/simulation, action SET_VALUES). Voltage and current must be
+  /// supplied together, matching firmware's validation; state of charge is
+  /// independently optional.
+  Future<CommandOutcome> setSimulationValues({
+    double? batteryVoltageVolts,
+    double? batteryCurrentAmps,
+    double? stateOfChargePercent,
   }) {
     final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsDevelopment, commandId, {
+    return _publishCommand(_topics.commandsSimulation, commandId, {
       'commandId': commandId,
-      'action': start ? 'START_SESSION' : 'END_SESSION',
-      'nodeMac': centralNodeMac,
+      'action': 'SET_VALUES',
+      'values': {
+        if (batteryVoltageVolts != null)
+          'batteryVoltageVolts': batteryVoltageVolts,
+        if (batteryCurrentAmps != null)
+          'batteryCurrentAmps': batteryCurrentAmps,
+        if (stateOfChargePercent != null)
+          'stateOfChargePercent': stateOfChargePercent,
+      },
     });
   }
 

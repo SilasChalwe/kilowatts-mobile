@@ -228,12 +228,17 @@ class AppState {
     initialStateOfChargePercent: initialStateOfChargePercent,
   );
 
-  Future<CommandOutcome> setDevelopmentSession({
-    required String centralNodeMac,
-    required bool start,
-  }) => _mqtt.setDevelopmentSession(
-    centralNodeMac: centralNodeMac,
-    start: start,
+  Future<CommandOutcome> setSimulationEnabled(bool enabled) =>
+      _mqtt.setSimulationEnabled(enabled);
+
+  Future<CommandOutcome> setSimulationValues({
+    double? batteryVoltageVolts,
+    double? batteryCurrentAmps,
+    double? stateOfChargePercent,
+  }) => _mqtt.setSimulationValues(
+    batteryVoltageVolts: batteryVoltageVolts,
+    batteryCurrentAmps: batteryCurrentAmps,
+    stateOfChargePercent: stateOfChargePercent,
   );
 
   void acknowledgeAllAlerts() {
