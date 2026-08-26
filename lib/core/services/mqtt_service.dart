@@ -28,16 +28,7 @@ enum MqttConnectionStatus {
   networkFailure,
 }
 
-/// The single application MQTT boundary. Broker topics are subscribed to
-/// once here and fanned out as parsed domain models; nothing outside this
-/// class talks to mqtt_client directly, decodes a topic payload, or holds
-/// broker credentials. The Central Node is the only embedded MQTT client —
-/// Smart Nodes never appear on the broker. This service talks only to the
-/// Central Node's installation-scoped topic namespace.
-///
-/// Credentials come from [MqttCredentialsStore] (user-entered, on-device
-/// only) rather than being configured at construction — [connect] loads
-/// them lazily the first time it runs.
+/// Single MQTT boundary shared by homeowner and installer experiences.
 class MqttService {
   MqttService({
     MqttConfig? config,
@@ -85,11 +76,6 @@ class MqttService {
 
   bool get isConfigured => _config.isConfigured;
 
-  /// Reads the persisted connection once without opening a broker session.
-  ///
-  /// The web installer console needs this before it fills its connection
-  /// form; otherwise a returning installer would see an empty form even
-  /// though valid credentials were already stored on that device.
   Future<MqttConfig> loadMqttConfig() async {
     if (!_credentialsLoaded) {
       _credentialsLoaded = true;
@@ -99,30 +85,21 @@ class MqttService {
     return _config;
   }
 
-  /// Connects using whatever credentials the user has already saved. The
-  /// first call loads them from [MqttCredentialsStore]; if none have been
-  /// entered yet, this reports [MqttConnectionStatus.notConfigured] instead
-  /// of attempting a connection with empty credentials.
   Future<void> connect() async {
     if (_disposed ||
         (_status == MqttConnectionStatus.connected && _client != null)) {
       return;
     }
     _manualDisconnect = false;
-
     await loadMqttConfig();
 
     if (!_config.isConfigured) {
       _setStatus(MqttConnectionStatus.notConfigured);
       return;
     }
-
     await _attemptConnect();
   }
 
-  /// Persists [config] as the active broker connection and (re)connects
-  /// with it. Used by the MQTT Settings screen when the user saves what
-  /// they typed in.
   Future<void> saveAndConnect(MqttConfig config) async {
     await _credentialsStore.save(config);
     _credentialsLoaded = true;
@@ -132,9 +109,6 @@ class MqttService {
     _reconnectTimer = null;
     _reconnectAttempt = 0;
 
-    // A disconnect callback can arrive after a replacement client has been
-    // created. Clear ownership before disconnecting so that the callback is
-    // ignored as stale rather than scheduling a second, competing reconnect.
     final previousUpdates = _updatesSubscription;
     _updatesSubscription = null;
     if (previousUpdates != null) {
@@ -146,9 +120,6 @@ class MqttService {
     await _attemptConnect();
   }
 
-  /// Tries [config] on a short-lived, throwaway client without disturbing
-  /// the main connection or any subscriptions — used by the "Test
-  /// Connection" action before the user commits to saving it.
   Future<MqttConnectionStatus> testConnection(MqttConfig config) async {
     if (!config.isConfigured) return MqttConnectionStatus.notConfigured;
 
@@ -187,7 +158,6 @@ class MqttService {
         'kilowatts-mobile-${Random().nextInt(0xFFFFFFF).toRadixString(16)}';
     final client = _buildClient(_config, clientId);
     client.onDisconnected = () => _handleDisconnected(client);
-
     _client = client;
 
     try {
@@ -195,9 +165,6 @@ class MqttService {
           .connect(_config.username, _config.password)
           .timeout(AppConstants.mqttConnectTimeout, onTimeout: () => null);
 
-      // A save/reconnect can replace this client while connect() is still
-      // awaiting a browser or TCP handshake. That older attempt must not
-      // overwrite the newer connection's status or subscriptions.
       if (_disposed || !identical(_client, client)) {
         client.disconnect();
         return;
@@ -233,19 +200,14 @@ class MqttService {
           ? MqttConnectionStatus.authenticationFailure
           : MqttConnectionStatus.networkFailure,
     );
-    if (!isAuthFailure) {
-      _scheduleReconnect();
-    }
+    if (!isAuthFailure) _scheduleReconnect();
   }
 
   void _handleDisconnected(MqttClient disconnectedClient) {
     if (_disposed || !identical(_client, disconnectedClient)) return;
-
     final updates = _updatesSubscription;
     _updatesSubscription = null;
-    if (updates != null) {
-      unawaited(updates.cancel());
-    }
+    if (updates != null) unawaited(updates.cancel());
     _client = null;
     if (_manualDisconnect) {
       _setStatus(MqttConnectionStatus.disconnected);
@@ -292,7 +254,6 @@ class MqttService {
       } catch (_) {
         continue;
       }
-
       _routeMessage(received.topic, decoded);
     }
   }
@@ -335,9 +296,7 @@ class MqttService {
       _alertController.add(AlertModel.fromJson(payload));
       return;
     }
-    if (topic == _topics.acks) {
-      _resolveAck(payload);
-    }
+    if (topic == _topics.acks) _resolveAck(payload);
   }
 
   void _resolveAck(Map<String, dynamic> payload) {
@@ -347,10 +306,6 @@ class MqttService {
     if (completer == null || completer.isCompleted) return;
 
     final status = payload['status']?.toString().toUpperCase();
-
-    // Config commands travel in two phases. ACCEPTED means Central has
-    // dispatched it, not that a remote Smart Node has actually changed
-    // hardware. Wait for APPLIED or FAILED for the same command ID.
     if (status == 'ACCEPTED') return;
 
     _pendingCommands.remove(id);
@@ -365,14 +320,8 @@ class MqttService {
     );
   }
 
-  /// Firmware parses `commandId` as a plain JSON number (`cJSON_IsNumber`),
-  /// so this must never be sent as a quoted string.
   final Random _commandIdRandom = Random.secure();
 
-  /// Command IDs are intentionally unpredictable rather than a per-app
-  /// counter. Multiple phones and the installer portal can be connected at
-  /// the same time, so a fresh app session must not accidentally accept a
-  /// different client's acknowledgement with the same small counter value.
   int _nextCommandId() {
     var commandId = 0;
     do {
@@ -381,6 +330,8 @@ class MqttService {
     return commandId;
   }
 
+  /// Updates priority/mode/schedule of an existing load using the exact
+  /// firmware LoadCommandRequest wire shape.
   Future<CommandOutcome> sendLoadCommand({
     required String nodeMac,
     required int relayPin,
@@ -397,40 +348,49 @@ class MqttService {
       if (mode != null && requestedState != null)
         'mode': _wireMode(mode, requestedState),
       'priority': ?priority,
-      if (schedule != null)
-        'schedule': {
-          'enabled': schedule.enabled,
-          'hour': schedule.hour ?? 0,
-          'minute': schedule.minute ?? 0,
-        },
+      if (schedule != null) 'schedule': schedule.toWireJson(),
     };
     return _publishCommand(_topics.commandsLoad, commandId, payload);
   }
 
   String _wireMode(LoadMode mode, bool on) {
-    if (mode == LoadMode.fixed) {
-      return on ? 'FIXED_ON' : 'FIXED_OFF';
-    }
+    if (mode == LoadMode.fixed) return on ? 'FIXED_ON' : 'FIXED_OFF';
     return on ? 'AUTO_ON' : 'AUTO_OFF';
   }
 
-  /// Applies Central's persisted electrical safety policy. The caller only
-  /// receives a confirmed outcome after the Central replies APPLIED.
-  Future<CommandOutcome> sendSafetyConfig(SafetyConfigDraft draft) {
-    final commandId = _nextCommandId();
-    final payload = <String, dynamic>{
-      'commandId': commandId,
-      'action': 'APPLY_SAFETY_CONFIG',
-      'safetyConfig': {
+  /// Configures the power policy through CONFIGURE_POWER_LIMITS, which is
+  /// the command implemented by the current Central firmware.
+  Future<CommandOutcome> sendSafetyConfig({
+    required String centralNodeMac,
+    required SafetyConfigDraft draft,
+  }) {
+    return _sendConfigCommand({
+      'action': 'CONFIGURE_POWER_LIMITS',
+      'nodeMac': centralNodeMac,
+      'powerLimits': {
         'minimumStateOfChargePercent': draft.lowBatteryCutoffPercent,
-        'warningStateOfChargePercent': draft.lowBatteryWarningPercent,
-        'targetRuntimeHours': draft.targetRuntimeHours,
-        'safetyFactor': 1 - (draft.safetyMarginPercent / 100),
         'maximumBatteryDischargeCurrentAmps': draft.maxBatteryDischargeCurrentA,
         'maximumMainCurrentAmps': draft.mainCurrentLimitA,
+        'requiredRuntimeHours': draft.targetRuntimeHours,
       },
-    };
-    return _publishCommand(_topics.commandsSystem, commandId, payload);
+    });
+  }
+
+  Future<CommandOutcome> requestOptimizationCycle() {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.commandsSystem, commandId, {
+      'commandId': commandId,
+      'action': 'REQUEST_OPTIMIZATION_CYCLE',
+    });
+  }
+
+  Future<CommandOutcome> setOptimizerIntervalSeconds(int seconds) {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.commandsSystem, commandId, {
+      'commandId': commandId,
+      'action': 'SET_OPTIMIZER_INTERVAL',
+      'optimizerIntervalSeconds': seconds,
+    });
   }
 
   Future<CommandOutcome> commissionNode({
@@ -455,10 +415,6 @@ class MqttService {
     });
   }
 
-  /// Removes the Node from Central's authoritative installation record.
-  /// A confirmed result means Central durably decommissioned it; the result
-  /// message explains whether the best-effort Smart-Node reset notification
-  /// could also be sent over ESP-NOW.
   Future<CommandOutcome> decommissionNode({required String nodeMac}) {
     return _sendConfigCommand({
       'action': 'DECOMMISSION_NODE',
@@ -500,12 +456,6 @@ class MqttService {
     });
   }
 
-  /// Switches Central's battery measurement source between simulated and
-  /// real INA219 (commands/simulation, action ENABLE/DISABLE) — matches
-  /// `MqttManager::handleSimulationCommandMessage` /
-  /// `SimulationCommandAction` in the firmware exactly. Neither the
-  /// installer portal nor the homeowner app need to know which source is
-  /// active beyond this switch and the resulting readings.
   Future<CommandOutcome> setSimulationEnabled(bool enabled) {
     final commandId = _nextCommandId();
     return _publishCommand(_topics.commandsSimulation, commandId, {
@@ -514,10 +464,6 @@ class MqttService {
     });
   }
 
-  /// Sets simulated battery readings while simulation is enabled
-  /// (commands/simulation, action SET_VALUES). Voltage and current must be
-  /// supplied together, matching firmware's validation; state of charge is
-  /// independently optional.
   Future<CommandOutcome> setSimulationValues({
     double? batteryVoltageVolts,
     double? batteryCurrentAmps,
@@ -586,9 +532,7 @@ class MqttService {
     _reconnectTimer = null;
     final updates = _updatesSubscription;
     _updatesSubscription = null;
-    if (updates != null) {
-      await updates.cancel();
-    }
+    if (updates != null) await updates.cancel();
     final client = _client;
     _client = null;
     client?.disconnect();
@@ -602,9 +546,7 @@ class MqttService {
     _reconnectTimer = null;
     final updates = _updatesSubscription;
     _updatesSubscription = null;
-    if (updates != null) {
-      unawaited(updates.cancel());
-    }
+    if (updates != null) unawaited(updates.cancel());
     final client = _client;
     _client = null;
     client?.disconnect();
