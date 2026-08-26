@@ -5,7 +5,6 @@ import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/development_mode_badge.dart';
 import '../../../core/widgets/error_state.dart';
-import '../../../core/widgets/live_status_badge.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
@@ -43,9 +42,8 @@ class DashboardScreen extends StatelessWidget {
           if (connectionStatus == MqttConnectionStatus.notConfigured) {
             stateBody = ErrorState(
               icon: Icons.router_outlined,
-              title: 'Connect this device',
-              message:
-                  'Add the MQTT connection supplied for this installation to begin receiving live telemetry.',
+              title: 'System setup required',
+              message: 'Add the connection details for this installation.',
               actionLabel: 'Set up connection',
               onRetry: () => Navigator.of(context).push(
                 MaterialPageRoute(
@@ -55,28 +53,36 @@ class DashboardScreen extends StatelessWidget {
             );
           } else if (connectionStatus == MqttConnectionStatus.connecting ||
               connectionStatus == MqttConnectionStatus.reconnecting) {
-            stateBody = const LoadingIndicator(
-              message: 'Connecting to your Kilowatts system…',
-            );
+            stateBody = const LoadingIndicator(message: 'Connecting…');
           } else {
             stateBody = ErrorState(
               icon: Icons.cloud_off_outlined,
-              title: 'Waiting for Central',
-              message:
-                  'The connection is configured, but Central has not published a live system update yet.',
+              title: 'Live data unavailable',
+              message: 'Reconnect to continue monitoring and control.',
+              actionLabel: 'Reconnect',
               onRetry: appState.connectMqtt,
             );
           }
         } else {
           final topology = appState.topology.value ?? TopologyModel.empty;
+          final healthNotice = SystemHealthSummary(
+            connectionStatus: connectionStatus,
+            topology: appState.topology.value,
+          );
+          final showHealthNotice = healthNotice.health != SystemHealth.ok;
+          final isDevelopment = state.operatingEnvironment == 'DEVELOPMENT';
+
           stateBody = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SystemHealthSummary(
-                connectionStatus: connectionStatus,
-                topology: appState.topology.value,
-              ),
-              const SizedBox(height: AppSpacing.md),
+              if (isDevelopment) ...[
+                const DevelopmentModeBadge(),
+                const SizedBox(height: AppSpacing.md),
+              ],
+              if (showHealthNotice) ...[
+                healthNotice,
+                const SizedBox(height: AppSpacing.md),
+              ],
               ResponsiveCardGrid(
                 minCardWidth: 420,
                 maxColumns: 2,
@@ -109,15 +115,7 @@ class DashboardScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const PageHeader(
-                    title: 'Overview',
-                    subtitle:
-                        'Live energy, load allocation and installation health.',
-                    actions: [
-                      DevelopmentModeBadge(),
-                      LiveStatusBadge(),
-                    ],
-                  ),
+                  const PageHeader(title: 'Overview'),
                   const SizedBox(height: AppSpacing.lg),
                   stateBody,
                 ],
