@@ -7,6 +7,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/page_header.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
 
@@ -68,84 +70,111 @@ class _SystemConnectionSettingsScreenState
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(AppSpacing.lg),
                 children: [
-                  const Text('System connection', style: AppTextStyles.title),
-                  const SizedBox(height: AppSpacing.md),
-                  ValueListenableBuilder<MqttConnectionStatus>(
-                    valueListenable: appState.connectionStatus,
-                    builder: (context, status, _) {
-                      final config = _config!;
-                      return SectionCard(
-                        title: 'MQTT broker',
-                        trailing: StatusBadge(
-                          label: _statusLabel(status),
-                          tone: _statusTone(status),
+                  ResponsiveContent(
+                    maxWidth: 880,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const PageHeader(
+                          title: 'System connection',
+                          subtitle:
+                              'Review the MQTT endpoint used by this device. Credentials remain stored locally.',
                         ),
-                        child: config.isConfigured
-                            ? Column(
-                                children: [
-                                  SectionRow(label: 'Host', value: config.host),
-                                  SectionRow(
-                                    label: 'Port',
-                                    value: '${config.port}',
-                                  ),
-                                  SectionRow(
-                                    label: 'Security',
-                                    value: config.useTls ? 'TLS enabled' : 'TLS off',
-                                  ),
-                                  SectionRow(
-                                    label: 'Topic namespace',
-                                    value: config.topicNamespace,
-                                  ),
-                                  SectionRow(
-                                    label: 'Broker account',
-                                    value: config.username?.isNotEmpty == true
-                                        ? config.username
-                                        : 'No username',
-                                  ),
-                                  const SizedBox(height: AppSpacing.sm),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: OutlinedButton.icon(
-                                      onPressed: _saving ? null : _editConnection,
-                                      icon: const Icon(Icons.edit_outlined),
-                                      label: Text(
-                                        _saving ? 'Saving…' : 'Edit connection',
+                        const SizedBox(height: AppSpacing.lg),
+                        ValueListenableBuilder<MqttConnectionStatus>(
+                          valueListenable: appState.connectionStatus,
+                          builder: (context, status, _) {
+                            final config = _config!;
+                            return SectionCard(
+                              title: 'MQTT broker',
+                              subtitle: config.isConfigured
+                                  ? 'Current saved connection.'
+                                  : 'No connection has been saved on this device.',
+                              trailing: StatusBadge(
+                                label: _statusLabel(status),
+                                tone: _statusTone(status),
+                              ),
+                              child: config.isConfigured
+                                  ? Column(
+                                      children: [
+                                        SectionRow(label: 'Host', value: config.host),
+                                        SectionRow(
+                                          label: 'Port',
+                                          value: '${config.port}',
+                                        ),
+                                        SectionRow(
+                                          label: 'Security',
+                                          value: config.useTls
+                                              ? 'TLS enabled'
+                                              : 'TLS off',
+                                        ),
+                                        SectionRow(
+                                          label: 'WebSocket path',
+                                          value: config.webSocketPath,
+                                        ),
+                                        SectionRow(
+                                          label: 'Topic namespace',
+                                          value: config.topicNamespace,
+                                        ),
+                                        SectionRow(
+                                          label: 'Broker account',
+                                          value: config.username?.isNotEmpty == true
+                                              ? config.username
+                                              : 'No username',
+                                        ),
+                                        const SizedBox(height: AppSpacing.sm),
+                                        Align(
+                                          alignment: Alignment.centerRight,
+                                          child: OutlinedButton.icon(
+                                            onPressed:
+                                                _saving ? null : _editConnection,
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              _saving
+                                                  ? 'Saving…'
+                                                  : 'Edit connection',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FilledButton.icon(
+                                        onPressed:
+                                            _saving ? null : _editConnection,
+                                        icon: const Icon(
+                                          Icons.add_link_outlined,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Add connection'),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('No broker connection is saved.'),
-                                  const SizedBox(height: AppSpacing.md),
-                                  FilledButton.icon(
-                                    onPressed: _saving ? null : _editConnection,
-                                    icon: const Icon(Icons.add_link_outlined),
-                                    label: const Text('Add connection'),
-                                  ),
-                                ],
-                              ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  const SectionCard(
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.lock_outline,
-                          size: 18,
-                          color: AppColors.textSecondary,
+                            );
+                          },
                         ),
-                        SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            'Broker credentials are stored on this device.',
-                            style: AppTextStyles.caption,
+                        const SizedBox(height: AppSpacing.md),
+                        const SectionCard(
+                          title: 'Credential storage',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.lock_outline_rounded,
+                                size: 20,
+                                color: AppColors.primary,
+                              ),
+                              SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  'Broker credentials are stored on this device and are not displayed after saving.',
+                                  style: AppTextStyles.caption,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -374,7 +403,7 @@ class _ConnectionEditorDialogState extends State<_ConnectionEditorDialog> {
         ),
         OutlinedButton(
           onPressed: _testing ? null : _test,
-          child: Text(_testing ? 'Testing…' : 'Test'),
+          child: Text(_testing ? 'Testing…' : 'Test connection'),
         ),
         FilledButton(
           onPressed: _testing
@@ -383,7 +412,7 @@ class _ConnectionEditorDialogState extends State<_ConnectionEditorDialog> {
                   final config = _read();
                   if (config != null) Navigator.of(context).pop(config);
                 },
-          child: const Text('Save'),
+          child: const Text('Save changes'),
         ),
       ],
     );
