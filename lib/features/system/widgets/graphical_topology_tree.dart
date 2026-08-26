@@ -7,8 +7,6 @@ import '../../loads/models/load_model.dart';
 import '../models/node_model.dart';
 import '../models/topology_model.dart';
 
-/// Top-down installation map. The diagram keeps communication and electrical
-/// ownership readable without pretending to be a physical wiring schematic.
 class GraphicalTopologyTree extends StatelessWidget {
   const GraphicalTopologyTree({
     required this.topology,
@@ -23,8 +21,8 @@ class GraphicalTopologyTree extends StatelessWidget {
   final ValueChanged<NodeModel>? onNodeTap;
   final ValueChanged<LoadModel>? onLoadTap;
 
-  static const double _boxWidth = 196;
-  static const double _boxHeight = 74;
+  static const double _boxWidth = 228;
+  static const double _boxHeight = 92;
   static const double _hGap = 30;
   static const double _vGap = 56;
 
@@ -77,13 +75,13 @@ class GraphicalTopologyTree extends StatelessWidget {
     required int depth,
     required _Cell nextSlot,
   }) {
-    final childNodes = <_LaidOutNode>[];
+    final children = <_LaidOutNode>[];
 
     for (final load in _loadsOwnedBy(node.mac)) {
-      childNodes.add(
+      children.add(
         _LaidOutNode(
-          titleLine1: 'Load',
-          titleLine2: load.name,
+          titleLine1: load.name,
+          titleLine2: 'GPIO ${load.relayPin}',
           slot: nextSlot.value.toDouble(),
           depth: depth + 1,
           load: load,
@@ -93,15 +91,15 @@ class GraphicalTopologyTree extends StatelessWidget {
     }
 
     for (final child in topology.childrenOf(node.mac)) {
-      childNodes.add(_layoutNode(child, depth: depth + 1, nextSlot: nextSlot));
+      children.add(_layoutNode(child, depth: depth + 1, nextSlot: nextSlot));
     }
 
     final double slot;
-    if (childNodes.isEmpty) {
+    if (children.isEmpty) {
       slot = nextSlot.value.toDouble();
       nextSlot.value += 1;
     } else {
-      slot = (childNodes.first.slot + childNodes.last.slot) / 2;
+      slot = (children.first.slot + children.last.slot) / 2;
     }
 
     return _LaidOutNode(
@@ -112,7 +110,7 @@ class GraphicalTopologyTree extends StatelessWidget {
       slot: slot,
       depth: depth,
       node: node,
-      children: childNodes,
+      children: children,
     );
   }
 
@@ -129,12 +127,12 @@ class GraphicalTopologyTree extends StatelessWidget {
     final top = node.depth * (_boxHeight + _vGap);
     final load = node.load;
     final physicalNode = node.node;
-    final isLoad = load != null || physicalNode == null;
-    final online = physicalNode?.online;
-    final loadOn = load?.displayState == true;
+    final isLoad = load != null;
+    final isOn = load?.displayState == true;
+
     final accent = isLoad
-        ? (loadOn ? AppColors.success : AppColors.primary)
-        : (online == false ? AppColors.error : AppColors.primary);
+        ? (isOn ? AppColors.success : AppColors.error)
+        : (physicalNode?.online == false ? AppColors.error : AppColors.primary);
 
     final VoidCallback? onTap = physicalNode != null
         ? (onNodeTap == null ? null : () => onNodeTap!(physicalNode))
@@ -146,81 +144,159 @@ class GraphicalTopologyTree extends StatelessWidget {
       width: _boxWidth,
       height: _boxHeight,
       child: Material(
-        color: AppColors.surface,
+        color: isLoad ? accent.withValues(alpha: 0.06) : AppColors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          side: BorderSide(
-            color: accent.withValues(alpha: isLoad ? 0.20 : 0.26),
-          ),
+          side: BorderSide(color: accent.withValues(alpha: 0.34)),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           mouseCursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-          hoverColor: accent.withValues(alpha: 0.045),
-          focusColor: accent.withValues(alpha: 0.07),
+          hoverColor: accent.withValues(alpha: 0.06),
+          focusColor: accent.withValues(alpha: 0.09),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.08),
+                    color: accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Icon(
                     isLoad
-                        ? (loadOn
+                        ? (isOn
                             ? Icons.flash_on_rounded
-                            : Icons.electrical_services_outlined)
+                            : Icons.power_settings_new_rounded)
                         : (physicalNode?.role == NodeRole.central
                             ? Icons.memory_rounded
                             : Icons.developer_board_outlined),
-                    size: 19,
+                    size: 20,
                     color: accent,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        node.titleLine1,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.textTertiary,
-                          fontWeight: FontWeight.w600,
+                  child: isLoad && load != null
+                      ? _LoadTopologyContent(load: load, accent: accent)
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              node.titleLine1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.textTertiary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              node.titleLine2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.label,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        node.titleLine2,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.label,
-                      ),
-                    ],
-                  ),
                 ),
                 if (physicalNode != null)
                   Container(
-                    width: 7,
-                    height: 7,
+                    width: 8,
+                    height: 8,
                     decoration: BoxDecoration(
-                      color: physicalNode.online ? AppColors.success : AppColors.error,
+                      color: physicalNode.online
+                          ? AppColors.success
+                          : AppColors.error,
                       shape: BoxShape.circle,
                     ),
                   ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadTopologyContent extends StatelessWidget {
+  const _LoadTopologyContent({required this.load, required this.accent});
+
+  final LoadModel load;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final isOn = load.displayState == true;
+    final mode = load.mode == LoadMode.fixed ? 'FIXED' : 'AUTO';
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          load.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.label,
+        ),
+        const SizedBox(height: 5),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _TopologyTag(
+              label: isOn ? 'ON' : 'OFF',
+              foreground: accent,
+              background: accent.withValues(alpha: 0.10),
+            ),
+            _TopologyTag(
+              label: mode,
+              foreground: AppColors.textSecondary,
+              background: AppColors.surfaceMuted,
+            ),
+            Text('GPIO ${load.relayPin}', style: AppTextStyles.caption),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TopologyTag extends StatelessWidget {
+  const _TopologyTag({
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.caption.copyWith(
+          color: foreground,
+          fontWeight: FontWeight.w700,
+          fontSize: 10,
         ),
       ),
     );
