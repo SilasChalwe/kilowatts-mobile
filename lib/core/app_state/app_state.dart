@@ -140,8 +140,6 @@ class AppState {
   Future<void> saveMqttConfig(MqttConfig config) =>
       _mqtt.saveAndConnect(config);
 
-  // Homeowner operations. Installer UI calls the same methods rather than
-  // creating a second control path.
   Future<CommandOutcome> setLoadFixedState({
     required String nodeMac,
     required int relayPin,
@@ -173,7 +171,6 @@ class AppState {
     );
   }
 
-  // Installer operations.
   Future<CommandOutcome> applySafetyConfig(SafetyConfigDraft draft) {
     InstallerNodeModel? central;
     for (final node in installerNodes.value) {
@@ -234,6 +231,18 @@ class AppState {
     batteryCapacityAmpHours: batteryCapacityAmpHours,
     initialStateOfChargePercent: initialStateOfChargePercent,
   );
+
+  Future<Map<String, dynamic>?> readLastInstallerSafetyConfig() =>
+      _localState.readInstallerSafetyConfig();
+
+  Future<void> cacheLastInstallerSafetyConfig(Map<String, dynamic> values) =>
+      _localState.cacheInstallerSafetyConfig(values);
+
+  Future<Map<String, dynamic>?> readLastInstallerBatteryConfig() =>
+      _localState.readInstallerBatteryConfig();
+
+  Future<void> cacheLastInstallerBatteryConfig(Map<String, dynamic> values) =>
+      _localState.cacheInstallerBatteryConfig(values);
 
   Future<CommandOutcome> setSimulationEnabled(bool enabled) =>
       _mqtt.setSimulationEnabled(enabled);
