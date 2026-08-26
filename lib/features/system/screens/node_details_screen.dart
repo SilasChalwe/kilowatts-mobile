@@ -5,6 +5,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/page_header.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../loads/models/load_model.dart';
@@ -22,18 +24,18 @@ class NodeDetailsScreen extends StatelessWidget {
   Widget _identityCard() {
     return SectionCard(
       title: 'Identity & communication',
-      trailing: StatusBadge.online(online: node.online),
+      subtitle: 'How this controller participates in the installation.',
       child: Column(
         children: [
-          SectionRow(label: 'MAC', value: node.mac.isEmpty ? null : node.mac),
+          SectionRow(label: 'MAC address', value: node.mac.isEmpty ? null : node.mac),
           SectionRow(
             label: 'Role',
-            value: node.role == NodeRole.central ? 'Central Node' : 'Smart Node',
+            value: node.role == NodeRole.central ? 'Central node' : 'Smart node',
           ),
           SectionRow(
             label: 'Next hop',
             value: node.nextHopMac == null || node.nextHopMac!.isEmpty
-                ? 'Central (direct)'
+                ? 'Central · direct'
                 : node.nextHopMac,
           ),
           SectionRow(label: 'Hop count', value: Formatters.hopCount(node.hopCount)),
@@ -57,6 +59,7 @@ class NodeDetailsScreen extends StatelessWidget {
           builder: (context, loads, _) {
             return SectionCard(
               title: 'Connected loads',
+              subtitle: 'Relay branches currently reported by this node.',
               child: branches.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -72,10 +75,7 @@ class NodeDetailsScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'No loads reported',
-                                  style: AppTextStyles.label,
-                                ),
+                                Text('No loads reported', style: AppTextStyles.label),
                                 SizedBox(height: 2),
                                 Text(
                                   'Configured relay branches will appear here.',
@@ -89,15 +89,16 @@ class NodeDetailsScreen extends StatelessWidget {
                     )
                   : Column(
                       children: [
-                        for (final branch in branches) ...[
+                        for (var index = 0; index < branches.length; index++) ...[
                           Builder(
                             builder: (context) {
+                              final branch = branches[index];
                               LoadModel? load;
                               for (final candidate in loads) {
-                                if (candidate.owningNodeMac ==
-                                        branch.owningNodeMac &&
+                                if (candidate.owningNodeMac == branch.owningNodeMac &&
                                     candidate.relayPin == branch.relayPin) {
                                   load = candidate;
+                                  break;
                                 }
                               }
                               return BranchCard(
@@ -107,15 +108,14 @@ class NodeDetailsScreen extends StatelessWidget {
                                     ? null
                                     : () => Navigator.of(context).push(
                                           MaterialPageRoute(
-                                            builder: (_) => LoadDetailsScreen(
-                                              load: load!,
-                                            ),
+                                            builder: (_) => LoadDetailsScreen(load: load!),
                                           ),
                                         ),
                               );
                             },
                           ),
-                          const SizedBox(height: AppSpacing.xs),
+                          if (index != branches.length - 1)
+                            const SizedBox(height: AppSpacing.xs),
                         ],
                       ],
                     ),
@@ -129,34 +129,35 @@ class NodeDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(node.displayName)),
+      appBar: AppBar(title: const Text('Node details')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final twoColumns = constraints.maxWidth >= 900;
-                final gap = AppSpacing.md;
-                final width = twoColumns
-                    ? (constraints.maxWidth - gap) / 2
-                    : constraints.maxWidth;
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  crossAxisAlignment: WrapCrossAlignment.start,
-                  children: [
-                    SizedBox(width: width, child: _identityCard()),
-                    SizedBox(
-                      width: width,
-                      child: NodeHealthCard(diagnostics: node.diagnostics),
-                    ),
-                  ],
-                );
-              },
+            ResponsiveContent(
+              maxWidth: 1120,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  PageHeader(
+                    eyebrow: node.role == NodeRole.central ? 'Central node' : 'Smart node',
+                    title: node.displayName,
+                    subtitle: node.mac,
+                    actions: [StatusBadge.online(online: node.online)],
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  ResponsiveCardGrid(
+                    minCardWidth: 360,
+                    maxColumns: 2,
+                    children: [
+                      _identityCard(),
+                      NodeHealthCard(diagnostics: node.diagnostics),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _branches(context),
+                ],
+              ),
             ),
-            const SizedBox(height: AppSpacing.md),
-            _branches(context),
           ],
         ),
       ),
