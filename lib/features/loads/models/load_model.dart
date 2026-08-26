@@ -3,11 +3,6 @@ import '../../../core/utils/json_parsing.dart';
 /// FIXED: the user's requested ON/OFF state is authoritative, subject to
 /// critical safety protection.
 /// AUTO: Best-First Search planning decides the target state each cycle.
-///
-/// Firmware's wire `mode` also encodes the ON/OFF bit (FIXED_ON/FIXED_OFF/
-/// AUTO_ON/AUTO_OFF) — that bit is carried separately here as `targetOn`,
-/// matching how the rest of this model already separates configured mode
-/// from planning/confirmed state.
 enum LoadMode {
   fixed,
   auto;
@@ -25,8 +20,9 @@ enum LoadMode {
   }
 }
 
-/// Mirrors firmware's `LoadHealth` exactly — whether Central currently
-/// trusts this Load enough to accept new commands / plan around it.
+/// Mirrors the older firmware health field when it is present. Current
+/// `state/loads` payloads do not publish health, so the safe default is
+/// available and command failures are still surfaced through MQTT ACKs.
 enum LoadHealth {
   available,
   faulted,
@@ -45,10 +41,7 @@ enum LoadHealth {
   }
 }
 
-/// UI-only importance bucket for the raw 0-10 wire priority (firmware has
-/// no notion of "levels" — see `Load::priority_` / W_max in firmware). This
-/// exists purely to keep a three-way selector in the UI; the wire value
-/// sent/received is always the plain integer.
+/// UI-only importance bucket for the raw 0-10 wire priority.
 enum LoadPriorityLevel {
   low,
   medium,
@@ -65,7 +58,6 @@ enum LoadPriorityLevel {
     }
   }
 
-  /// Representative wire value sent when the user picks this level.
   int get wireValue {
     switch (this) {
       case LoadPriorityLevel.low:
@@ -84,11 +76,7 @@ enum LoadPriorityLevel {
   }
 }
 
-/// Why an Auto load's planner target is currently OFF, translated from
-/// firmware's `rejectionReason` string (`TopologyTree::rejectionReasonText`)
-/// into homeowner-facing language at the model boundary — screens should
-/// never see the raw wire string. `null` means nothing is being rejected
-/// (firmware's "NONE").
+/// Why an AUTO load is currently not selected by Best-First Search.
 enum LoadRejectionReason {
   batteryReserveProtected,
   insufficientAvailablePower,
@@ -135,22 +123,62 @@ enum LoadRejectionReason {
   }
 }
 
-/// Firmware's actual schedule shape: a single preferred time-of-day, not a
-/// start/end window. Meaning is "not eligible before this time" — it never
-/// forces a load ON, and a disabled schedule imposes no deferment at all.
+/// Preferred running window for an AUTO load.
+///
+/// This mirrors firmware `AutoSchedule` exactly: enabled schedules contain
+/// startHour/startMinute/endHour/endMinute. Overnight windows are valid. The
+/// legacy `hour`/`minute` parameters/getters are retained so older cached
+/// state and UI call sites remain source-compatible while the app migrates.
 class LoadSchedule {
-  const LoadSchedule({this.enabled = false, this.hour, this.minute});
+  const LoadSchedule({
+    this.enabled = false,
+    int? startHour,
+    int? startMinute,
+    this.endHour,
+    this.endMinute,
+    int? hour,
+    int? minute,
+  }) : startHour = startHour ?? hour,
+       startMinute = startMinute ?? minute;
 
   final bool enabled;
-  final int? hour;
-  final int? minute;
+  final int? startHour;
+  final int? startMinute;
+  final int? endHour;
+  final int? endMinute;
+
+  int? get hour => startHour;
+  int? get minute => startMinute;
 
   static const disabled = LoadSchedule(enabled: false);
+
+  /// Exact JSON object accepted by firmware `MqttManager::parseSchedule`.
+  Map<String, dynamic> toWireJson() {
+    if (!enabled) return const {'enabled': false};
+
+    final startH = (startHour ?? 0).clamp(0, 23).toInt();
+    final startM = (startMinute ?? 0).clamp(0, 59).toInt();
+    var endH = (endHour ?? ((startH + 1) % 24)).clamp(0, 23).toInt();
+    final endM = (endMinute ?? startM).clamp(0, 59).toInt();
+
+    // Firmware rejects a zero-length enabled window. If legacy data only
+    // supplied one time, preserve its historical one-hour meaning.
+    if (startH == endH && startM == endM) {
+      endH = (startH + 1) % 24;
+    }
+
+    return {
+      'enabled': true,
+      'startHour': startH,
+      'startMinute': startM,
+      'endHour': endH,
+      'endMinute': endM,
+    };
+  }
 }
 
-/// A controllable appliance/circuit endpoint. Identity is the owning
-/// Node's MAC plus its relay pin — never the Node MAC alone, since the same
-/// relay pin number can repeat on a different Smart Node.
+/// A controllable appliance/circuit endpoint. Identity is the owning Node's
+/// MAC plus its relay pin.
 class LoadModel {
   const LoadModel({
     required this.owningNodeMac,
@@ -177,70 +205,82 @@ class LoadModel {
   final String name;
   final String? owningNodeName;
   final LoadMode mode;
-
-  /// Raw firmware priority, 0-10 (higher = more important). See
-  /// [LoadPriorityLevel] for the UI-only bucketed view.
   final int priority;
 
-  /// The current Best-First planning decision (`targetOn` on the wire) for
-  /// Auto loads, or the configured requested state for Fixed loads. Distinct
-  /// from [confirmedState] — this is what Central *wants*, not necessarily
-  /// what the relay has confirmed.
+  /// Current requested/planned state. Current firmware encodes this in the
+  /// `mode` string itself (FIXED_ON/FIXED_OFF/AUTO_ON/AUTO_OFF), so the model
+  /// derives it when the older `targetOn` field is absent.
   final bool? requestedState;
 
-  /// The last relay state confirmed back from the Central/Smart Node.
+  /// Retained for compatibility with older firmware. Current firmware does
+  /// not claim downstream relay/appliance confirmation, therefore this stays
+  /// null/invalid unless an older payload explicitly provides it.
   final bool? confirmedState;
-
-  /// Whether [confirmedState] is trustworthy right now. Firmware never
-  /// forces this false on a failed command — only a successful hardware
-  /// read-back sets it true — so screens must treat a stale/invalid
-  /// confirmation as "unconfirmed", not silently trust it.
   final bool confirmedStateValid;
 
   final LoadHealth health;
   final LoadSchedule schedule;
   final LoadRejectionReason? rejectionReason;
-  /// Installer-rated planning value (V × A), never a live per-load reading.
+
+  /// Installer-entered planning power. Current firmware publishes this as
+  /// `powerRatingWatts`; it is not a live per-load measurement.
   final double? plannedPowerW;
   final double? ratedVoltageV;
   final double? ratedCurrentA;
   final double? startupPowerW;
-
-  /// When this snapshot was parsed locally — firmware does not publish a
-  /// per-load timestamp, so this is receipt time, not a device clock value.
   final DateTime? lastUpdated;
 
   String get id => '$owningNodeMac:$relayPin';
-
   bool get available => health == LoadHealth.available;
-
-  /// The state actually being shown to the user right now, independent of
-  /// how it got there (confirmed relay feedback if we have it, otherwise
-  /// the best available signal).
   bool? get displayState => confirmedState ?? requestedState;
+
+  static bool? _stateFromMode(String? mode) {
+    if (mode == null) return null;
+    if (mode.endsWith('_ON')) return true;
+    if (mode.endsWith('_OFF')) return false;
+    return null;
+  }
 
   factory LoadModel.fromJson(Map<String, dynamic> json) {
     final owningNodeMac = json.stringOrNull('nodeMac') ?? '';
     final relayPin = json.intOrNull('relayPin') ?? -1;
+    final wireMode = json.stringOrNull('mode');
+    final scheduleJson = json.mapOrNull('schedule') ?? const <String, dynamic>{};
+
     return LoadModel(
       owningNodeMac: owningNodeMac,
       relayPin: relayPin,
       name: json.stringOrNull('name') ?? 'Load $relayPin',
-      mode: LoadMode.fromWire(json.stringOrNull('mode')),
+      owningNodeName: json.stringOrNull('nodeName'),
+      mode: LoadMode.fromWire(wireMode),
       priority: json.intOrNull('priority') ?? 0,
-      requestedState: json.boolOrNull('targetOn'),
+      requestedState: json.boolOrNull('targetOn') ?? _stateFromMode(wireMode),
       confirmedState: json.boolOrNull('confirmedOn'),
       confirmedStateValid: json.boolOrNull('confirmedStateValid') ?? false,
       health: LoadHealth.fromWire(json.stringOrNull('health')),
       schedule: LoadSchedule(
-        enabled: json.boolOrNull('scheduleEnabled') ?? false,
-        hour: json.intOrNull('scheduleHour'),
-        minute: json.intOrNull('scheduleMinute'),
+        enabled:
+            scheduleJson.boolOrNull('enabled') ??
+            json.boolOrNull('scheduleEnabled') ??
+            false,
+        startHour:
+            scheduleJson.intOrNull('startHour') ??
+            scheduleJson.intOrNull('hour') ??
+            json.intOrNull('scheduleHour'),
+        startMinute:
+            scheduleJson.intOrNull('startMinute') ??
+            scheduleJson.intOrNull('minute') ??
+            json.intOrNull('scheduleMinute'),
+        endHour: scheduleJson.intOrNull('endHour'),
+        endMinute: scheduleJson.intOrNull('endMinute'),
       ),
       rejectionReason: LoadRejectionReason.fromWire(
-        json.stringOrNull('rejectionReason'),
+        json.stringOrNull('bestFirstRejectionReason') ??
+            json.stringOrNull('rejectionReason'),
       ),
-      plannedPowerW: json.doubleOrNull('nominalPowerWatts'),
+      plannedPowerW:
+          json.doubleOrNull('powerRatingWatts') ??
+          json.doubleOrNull('nominalPowerWatts'),
       ratedVoltageV: json.doubleOrNull('nominalVoltageVolts'),
       ratedCurrentA: json.doubleOrNull('nominalCurrentAmps'),
       startupPowerW: json.doubleOrNull('startupWatts'),

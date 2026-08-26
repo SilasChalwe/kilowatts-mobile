@@ -2,12 +2,7 @@ import '../../../core/utils/json_parsing.dart';
 import '../../loads/models/load_model.dart';
 
 /// The installer-facing identity/configuration view published on
-/// `state/nodes` (a superset of the older `config/nodes` shape: same
-/// identity/capability fields, plus live `online`/`hopCountToCentral`/
-/// `nextHopMac`/`lastSeenMilliseconds` — see
-/// NodeRegistryJson::buildStateNodesJson). It is intentionally distinct
-/// from the homeowner topology model: it exposes hardware capabilities and
-/// commissioning lifecycle, not just a friendly network tree.
+/// `state/nodes`.
 class InstallerNodeModel {
   const InstallerNodeModel({
     required this.mac,
@@ -31,21 +26,10 @@ class InstallerNodeModel {
   final String? name;
   final String? firmwareVersion;
   final String? chipModel;
-
-  /// A firmware-declared, board-safe GPIO inventory. The web UI must only
-  /// offer pins in this list; it never guesses that a physical pin is safe.
   final List<int> availableRelayPins;
-
-  /// Null when this node has never actually reported into
-  /// CentralNodeRegistry yet (known to commissioning only) — shown as
-  /// "Unavailable", never assumed offline.
   final bool? online;
   final int? hopCountToCentral;
   final String? nextHopMac;
-
-  /// Milliseconds since Central's own boot (FreeRTOS tick count), not a
-  /// wall-clock epoch — only meaningful compared against another reading
-  /// from the same boot. Prefer [online] for a simple status display.
   final int? lastSeenMillisecondsSinceBoot;
 
   bool get isSmartNode => role == 'SMART';
@@ -61,14 +45,9 @@ class InstallerNodeModel {
   }
 
   factory InstallerNodeModel.fromJson(Map<String, dynamic> json) {
-    // Firmware (NodeRegistryJson::buildStateNodesJson) emits the node's
-    // friendly name as "nodeName" and its unused-pin inventory as
-    // "availableRelayPins" — not "name" / "relayCapabilities".
     final rawPins = json['availableRelayPins'];
     return InstallerNodeModel(
       mac: json.stringOrNull('mac') ?? '',
-      // Firmware emits lifecycle text in lowercase; normalize at the wire
-      // boundary so a real discovered `smart` node is configurable here.
       role: (json.stringOrNull('role') ?? 'UNKNOWN').toUpperCase(),
       lifecycleState:
           (json.stringOrNull('lifecycleState') ?? 'UNKNOWN').toUpperCase(),
@@ -85,19 +64,24 @@ class InstallerNodeModel {
       online: json.boolOrNull('online'),
       hopCountToCentral: json.intOrNull('hopCountToCentral'),
       nextHopMac: json.stringOrNull('nextHopMac'),
-      // Firmware does not currently publish a per-node last-seen timestamp
-      // in state/nodes (see NodeRegistryJson::buildStateNodesJson); prefer
-      // [online] for status display until that is added.
       lastSeenMillisecondsSinceBoot: json.intOrNull('lastSeenMilliseconds'),
     );
   }
 }
 
-/// The exact physical and planning facts required to create one real load
-/// channel on a commissioned Smart Node. Smart Nodes have no per-load
-/// INA219: voltage/current are verified nameplate or commissioning-test
-/// ratings, used to derive a conservative planning estimate rather than a
-/// live consumption reading.
+enum InstallerLoadPowerType {
+  ac,
+  dc;
+
+  String get wireValue => this == InstallerLoadPowerType.ac ? 'AC' : 'DC';
+}
+
+/// Physical/planning facts required by firmware CONFIGURE_LOAD.
+///
+/// Existing installer forms still collect nameplate voltage/current because
+/// those values are useful during commissioning. The MQTT contract itself
+/// receives the resulting `powerRatingWatts`, plus AC/DC power type, relay
+/// polarity, priority, mode and schedule.
 class InstallerLoadConfiguration {
   const InstallerLoadConfiguration({
     required this.nodeMac,
@@ -110,6 +94,7 @@ class InstallerLoadConfiguration {
     required this.startupWatts,
     required this.priority,
     required this.mode,
+    this.powerType = InstallerLoadPowerType.dc,
     this.schedule = LoadSchedule.disabled,
   });
 
@@ -123,7 +108,10 @@ class InstallerLoadConfiguration {
   final double startupWatts;
   final int priority;
   final LoadMode mode;
+  final InstallerLoadPowerType powerType;
   final LoadSchedule schedule;
+
+  double get powerRatingWatts => nominalVoltageVolts * nominalCurrentAmps;
 
   Map<String, dynamic> toCommandPayload() => {
     'nodeMac': nodeMac,
@@ -131,17 +119,11 @@ class InstallerLoadConfiguration {
       'name': name,
       'relayPin': relayPin,
       'relayActiveHigh': relayActiveHigh,
-      'nominalVoltageVolts': nominalVoltageVolts,
-      'nominalCurrentAmps': nominalCurrentAmps,
-      'branchMaximumCurrentAmps': branchMaximumCurrentAmps,
-      'startupWatts': startupWatts,
-      'priority': priority,
       'mode': _wireMode(mode),
-      'schedule': {
-        'enabled': schedule.enabled,
-        'hour': schedule.hour ?? 0,
-        'minute': schedule.minute ?? 0,
-      },
+      'powerType': powerType.wireValue,
+      'priority': priority,
+      'powerRatingWatts': powerRatingWatts,
+      'schedule': schedule.toWireJson(),
     },
   };
 

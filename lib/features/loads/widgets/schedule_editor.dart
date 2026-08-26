@@ -5,9 +5,9 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
 import '../models/load_model.dart';
 
-/// Editable "not eligible before this time" deferment. Priority still
-/// decides importance — this only controls when a load becomes eligible;
-/// it never forces a load ON at the given time.
+/// Edits the preferred running window used by the firmware's AUTO planner.
+/// Priority still decides importance; the window only changes when the load
+/// is eligible for the preference boost and never forces a load ON.
 class ScheduleEditor extends StatelessWidget {
   const ScheduleEditor({
     required this.schedule,
@@ -18,35 +18,77 @@ class ScheduleEditor extends StatelessWidget {
   final LoadSchedule schedule;
   final ValueChanged<LoadSchedule> onChanged;
 
-  Future<void> _pickTime(BuildContext context) async {
+  Future<void> _pickStart(BuildContext context) async {
     final initial = TimeOfDay(
-      hour: schedule.hour ?? 6,
-      minute: schedule.minute ?? 0,
+      hour: schedule.startHour ?? 6,
+      minute: schedule.startMinute ?? 0,
     );
     final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null) return;
 
+    final endHour = schedule.endHour ?? ((picked.hour + 1) % 24);
+    final endMinute = schedule.endMinute ?? picked.minute;
     onChanged(
       LoadSchedule(
         enabled: schedule.enabled,
-        hour: picked.hour,
-        minute: picked.minute,
+        startHour: picked.hour,
+        startMinute: picked.minute,
+        endHour: endHour,
+        endMinute: endMinute,
+      ),
+    );
+  }
+
+  Future<void> _pickEnd(BuildContext context) async {
+    final startHour = schedule.startHour ?? 6;
+    final startMinute = schedule.startMinute ?? 0;
+    final initial = TimeOfDay(
+      hour: schedule.endHour ?? ((startHour + 1) % 24),
+      minute: schedule.endMinute ?? startMinute,
+    );
+    final picked = await showTimePicker(context: context, initialTime: initial);
+    if (picked == null) return;
+
+    if (picked.hour == startHour && picked.minute == startMinute) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Start and end time must be different.')),
+      );
+      return;
+    }
+
+    onChanged(
+      LoadSchedule(
+        enabled: schedule.enabled,
+        startHour: startHour,
+        startMinute: startMinute,
+        endHour: picked.hour,
+        endMinute: picked.minute,
       ),
     );
   }
 
   void _toggleEnabled(bool enabled) {
+    final startHour = schedule.startHour ?? 6;
+    final startMinute = schedule.startMinute ?? 0;
     onChanged(
       LoadSchedule(
         enabled: enabled,
-        hour: schedule.hour ?? 6,
-        minute: schedule.minute ?? 0,
+        startHour: startHour,
+        startMinute: startMinute,
+        endHour: schedule.endHour ?? ((startHour + 1) % 24),
+        endMinute: schedule.endMinute ?? startMinute,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final startHour = schedule.startHour ?? 6;
+    final startMinute = schedule.startMinute ?? 0;
+    final endHour = schedule.endHour ?? ((startHour + 1) % 24);
+    final endMinute = schedule.endMinute ?? startMinute;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -60,19 +102,34 @@ class ScheduleEditor extends StatelessWidget {
         ),
         if (schedule.enabled) ...[
           const SizedBox(height: AppSpacing.xs),
-          OutlinedButton(
-            onPressed: () => _pickTime(context),
-            child: Text(
-              schedule.hour == null
-                  ? 'Eligible from…'
-                  : 'Eligible from ${Formatters.timeOfDay(schedule.hour!, schedule.minute ?? 0)}',
-            ),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _pickStart(context),
+                icon: const Icon(Icons.play_arrow_outlined),
+                label: Text(
+                  'Start ${Formatters.timeOfDay(startHour, startMinute)}',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _pickEnd(context),
+                icon: const Icon(Icons.stop_outlined),
+                label: Text('End ${Formatters.timeOfDay(endHour, endMinute)}'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          const Text(
+            'Overnight windows are supported, for example 22:00–02:00.',
+            style: AppTextStyles.caption,
           ),
         ] else
           const Padding(
             padding: EdgeInsets.only(top: AppSpacing.xxs),
             child: Text(
-              'Not before any particular time — priority alone decides scheduling.',
+              'No preferred running window — priority and available power decide scheduling.',
               style: AppTextStyles.caption,
             ),
           ),

@@ -1,9 +1,11 @@
 import '../../loads/models/load_model.dart';
 
-/// Draft safety limits being built up across the Safety Configuration step.
-/// Defaults mirror sensible homeowner-safe values. Firmware does not yet
-/// accept a safety-config command (see [MqttService.sendSafetyConfig]'s own
-/// doc comment) — submitting this draft is honestly rejected until it does.
+/// Draft installation power policy.
+///
+/// The current firmware persists the minimum SoC, required runtime, maximum
+/// battery discharge current and maximum main current through
+/// CONFIGURE_POWER_LIMITS. Warning SoC and UI safety margin remain local UI
+/// guidance because the current firmware command model does not persist them.
 class SafetyConfigDraft {
   SafetyConfigDraft({
     this.lowBatteryCutoffPercent = 20,
@@ -22,8 +24,8 @@ class SafetyConfigDraft {
   double mainCurrentLimitA;
 }
 
-/// Draft configuration for a single discovered Load, identified the same
-/// way as [LoadModel]: owning node MAC + relay pin.
+/// Draft configuration for a single discovered Load, identified by owning
+/// node MAC + relay pin.
 class LoadConfigDraft {
   LoadConfigDraft({
     required this.owningNodeMac,
@@ -37,8 +39,6 @@ class LoadConfigDraft {
   final String owningNodeMac;
   final int relayPin;
   String name;
-
-  /// Raw 0-10 wire priority (see [LoadPriorityLevel] for the UI bucketing).
   int priority;
   LoadMode mode;
   LoadSchedule schedule;
@@ -46,10 +46,6 @@ class LoadConfigDraft {
   String get id => '$owningNodeMac:$relayPin';
 }
 
-/// Mutable state accumulated while walking through the first-time setup
-/// wizard. Held by [SystemConnectionScreen] and threaded by reference to
-/// every subsequent step; nothing here is sent anywhere until the user
-/// reaches Setup Summary and taps Finish.
 class SetupSession {
   final Map<String, String> nodeNames = {};
   final Map<String, String> nodeLocations = {};
