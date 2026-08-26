@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/services/command_outcome.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 
@@ -41,12 +42,13 @@ class _InstallerOperationsScreenState
   Future<void> _runOptimization() async {
     setState(() {
       _optimizing = true;
-      _message = null;
+      _message = 'Requesting an immediate optimization cycle…';
+      _messageIsError = false;
     });
     final outcome = await AppStateScope.of(context).requestOptimizationCycle();
     if (!mounted) return;
     setState(() => _optimizing = false);
-    _showOutcome(outcome, 'Optimization cycle requested successfully.');
+    _showOutcome(outcome, 'Central accepted the optimization request.');
   }
 
   Future<void> _saveInterval() async {
@@ -61,42 +63,77 @@ class _InstallerOperationsScreenState
 
     setState(() {
       _savingInterval = true;
-      _message = null;
+      _message = 'Sending optimizer interval to Central…';
+      _messageIsError = false;
     });
     final outcome = await AppStateScope.of(
       context,
     ).setOptimizerIntervalSeconds(seconds);
     if (!mounted) return;
     setState(() => _savingInterval = false);
-    _showOutcome(outcome, 'Optimizer interval updated to $seconds seconds.');
+    _showOutcome(outcome, 'Optimizer interval confirmed at ${_friendlyInterval(seconds)}.');
+  }
+
+  String _friendlyInterval(int seconds) {
+    if (seconds % 3600 == 0) return '${seconds ~/ 3600} h';
+    if (seconds % 60 == 0) return '${seconds ~/ 60} min';
+    return '$seconds s';
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          const Text('System operations', style: AppTextStyles.display),
-          const SizedBox(height: AppSpacing.xs),
-          const Text(
-            'Run the Best-First planner on demand or change how often Central optimizes loads automatically.',
-            style: AppTextStyles.subtitle,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Card(
-            child: Padding(
+    return Scaffold(
+      appBar: AppBar(title: const Text('System operations')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          children: [
+            const Text('Central operations', style: AppTextStyles.display),
+            const SizedBox(height: AppSpacing.xs),
+            const Text(
+              'Run Best-First Search on demand or control how frequently Central automatically re-evaluates load priorities.',
+              style: AppTextStyles.subtitle,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Container(
               padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Best-First optimization',
-                    style: AppTextStyles.title,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  const Text(
-                    'Requests an immediate planning cycle using the current battery budget, load priorities and schedules.',
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppColors.info.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_outlined,
+                          color: AppColors.info,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Best-First optimization', style: AppTextStyles.title),
+                            SizedBox(height: 2),
+                            Text(
+                              'Uses the latest battery budget, load priorities and schedules.',
+                              style: AppTextStyles.caption,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.md),
                   FilledButton.icon(
@@ -107,35 +144,57 @@ class _InstallerOperationsScreenState
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.play_arrow_outlined),
+                        : const Icon(Icons.play_arrow_rounded),
                     label: Text(
-                      _optimizing ? 'Requesting…' : 'Run optimization now',
+                      _optimizing ? 'Waiting for Central…' : 'Run optimization now',
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Card(
-            child: Padding(
+            const SizedBox(height: AppSpacing.md),
+            Container(
               padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Automatic interval', style: AppTextStyles.title),
+                  const Text('Automatic optimization interval', style: AppTextStyles.title),
                   const SizedBox(height: AppSpacing.xs),
                   const Text(
-                    'Firmware accepts 5 seconds to 24 hours. The default is 300 seconds (5 minutes).',
+                    'Choose a common interval or enter a custom value. Firmware accepts 5 seconds to 24 hours.',
+                    style: AppTextStyles.caption,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Wrap(
+                    spacing: AppSpacing.xs,
+                    runSpacing: AppSpacing.xs,
+                    children: [
+                      for (final preset in const [30, 60, 300, 900, 3600])
+                        ChoiceChip(
+                          label: Text(_friendlyInterval(preset)),
+                          selected: int.tryParse(_interval.text.trim()) == preset,
+                          onSelected: _savingInterval
+                              ? null
+                              : (_) => setState(() => _interval.text = '$preset'),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.md),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 360),
                     child: TextField(
                       controller: _interval,
+                      enabled: !_savingInterval,
+                      onChanged: (_) => setState(() {}),
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Interval (seconds)',
+                        labelText: 'Custom interval (seconds)',
+                        helperText: 'Default: 300 seconds (5 minutes)',
                       ),
                     ),
                   ),
@@ -150,25 +209,47 @@ class _InstallerOperationsScreenState
                           )
                         : const Icon(Icons.schedule_outlined),
                     label: Text(
-                      _savingInterval ? 'Saving…' : 'Save optimizer interval',
+                      _savingInterval ? 'Waiting for Central…' : 'Apply interval',
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          if (_message != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              _message!,
-              style: TextStyle(
-                color: _messageIsError
-                    ? Theme.of(context).colorScheme.error
-                    : Theme.of(context).colorScheme.primary,
+            if (_message != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: (_messageIsError ? AppColors.error : AppColors.success)
+                      .withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _messageIsError
+                          ? Icons.error_outline_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 18,
+                      color: _messageIsError ? AppColors.error : AppColors.success,
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: Text(
+                        _message!,
+                        style: AppTextStyles.caption.copyWith(
+                          color: _messageIsError
+                              ? AppColors.error
+                              : AppColors.success,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
