@@ -4,9 +4,6 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 
-/// A restrained white card used to group related content, matching the
-/// wireframes' "clear cards" language. Keep contents glanceable — this is
-/// a container, not a place to nest another full screen of UI.
 class SectionCard extends StatelessWidget {
   const SectionCard({
     required this.child,
@@ -50,7 +47,6 @@ class SectionCard extends StatelessWidget {
   }
 }
 
-/// A single label/value row inside a [SectionCard], e.g. "Status  Online".
 class SectionRow extends StatelessWidget {
   const SectionRow({
     required this.label,
@@ -70,14 +66,20 @@ class SectionRow extends StatelessWidget {
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: Text(label, style: AppTextStyles.body)),
+          const SizedBox(width: AppSpacing.sm),
           if (valueWidget != null)
-            valueWidget!
+            Flexible(child: Align(alignment: Alignment.centerRight, child: valueWidget!))
           else
-            Text(
-              value ?? '—',
-              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
+            Flexible(
+              child: Text(
+                value ?? '—',
+                textAlign: TextAlign.end,
+                softWrap: true,
+                style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
+              ),
             ),
           if (onTap != null) ...[
             const SizedBox(width: AppSpacing.xxs),
