@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/development_mode_badge.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/live_status_badge.dart';
 import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/page_header.dart';
 import '../../settings/screens/system_connection_settings_screen.dart';
 import '../../system/models/topology_model.dart';
 import '../widgets/battery_summary.dart';
@@ -40,9 +40,9 @@ class DashboardScreen extends StatelessWidget {
         if (state == null) {
           if (connectionStatus == MqttConnectionStatus.notConfigured) {
             return ErrorState(
-              title: 'Connect your system',
+              title: 'Connect your Kilowatts system',
               message:
-                  'Set up this device using the broker details supplied by your installer.',
+                  'Add the broker details for this installation to start receiving live energy and load data.',
               actionLabel: 'Set up connection',
               onRetry: () => Navigator.of(context).push(
                 MaterialPageRoute(
@@ -53,14 +53,12 @@ class DashboardScreen extends StatelessWidget {
           }
           if (connectionStatus == MqttConnectionStatus.connecting ||
               connectionStatus == MqttConnectionStatus.reconnecting) {
-            return const LoadingIndicator(
-              message: 'Connecting to your system…',
-            );
+            return const LoadingIndicator(message: 'Connecting to your system…');
           }
           return ErrorState(
-            title: 'No system data yet',
+            title: 'Waiting for Central',
             message:
-                'Waiting for the Central Node to publish its first update.',
+                'The app is connected but has not received a system update yet.',
             onRetry: appState.connectMqtt,
           );
         }
@@ -71,27 +69,15 @@ class DashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Dashboard', style: AppTextStyles.title),
-                          SizedBox(height: 2),
-                          Text(
-                            'Live energy, load and system health overview',
-                            style: AppTextStyles.caption,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const DevelopmentModeBadge(),
-                    const SizedBox(width: AppSpacing.sm),
-                    const LiveStatusBadge(),
+                const PageHeader(
+                  title: 'Overview',
+                  subtitle: 'Live energy, loads and system health.',
+                  actions: [
+                    DevelopmentModeBadge(),
+                    LiveStatusBadge(),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.lg),
                 Expanded(
                   child: ListView(
                     children: [
@@ -102,31 +88,38 @@ class DashboardScreen extends StatelessWidget {
                       const SizedBox(height: AppSpacing.md),
                       LayoutBuilder(
                         builder: (context, constraints) {
-                          final wide = constraints.maxWidth >= 760;
-                          if (!wide) {
-                            return Column(
-                              children: [
-                                BatterySummary(state: state),
-                                const SizedBox(height: AppSpacing.md),
-                                PowerSummary(state: state),
-                              ],
-                            );
-                          }
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          final gap = AppSpacing.md;
+                          final columns = constraints.maxWidth >= 1180
+                              ? 3
+                              : constraints.maxWidth >= 760
+                                  ? 2
+                                  : 1;
+                          final width =
+                              (constraints.maxWidth - gap * (columns - 1)) /
+                                  columns;
+                          return Wrap(
+                            spacing: gap,
+                            runSpacing: gap,
                             children: [
-                              Expanded(child: BatterySummary(state: state)),
-                              const SizedBox(width: AppSpacing.md),
-                              Expanded(child: PowerSummary(state: state)),
+                              SizedBox(
+                                width: width,
+                                child: BatterySummary(state: state),
+                              ),
+                              SizedBox(
+                                width: width,
+                                child: PowerSummary(state: state),
+                              ),
+                              SizedBox(
+                                width: width,
+                                child: LoadSummary(
+                                  loads: appState.loads.value,
+                                  topology: appState.topology.value ??
+                                      TopologyModel.empty,
+                                ),
+                              ),
                             ],
                           );
                         },
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      LoadSummary(
-                        loads: appState.loads.value,
-                        topology:
-                            appState.topology.value ?? TopologyModel.empty,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       RecentAlerts(
