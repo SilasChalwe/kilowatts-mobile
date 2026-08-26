@@ -73,19 +73,13 @@ class _LoadsScreenState extends State<LoadsScreen> {
         valueListenable: appState.loads,
         builder: (context, loads, _) {
           final filtered = _apply(loads);
-          final onCount = loads.where((load) => load.displayState == true).length;
-          final autoCount = loads.where((load) => load.mode == LoadMode.auto).length;
 
           return SingleChildScrollView(
             child: ResponsiveContent(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  PageHeader(
-                    title: 'Loads',
-                    subtitle:
-                        '${loads.length} configured · $onCount on · $autoCount automatic',
-                  ),
+                  const PageHeader(title: 'Loads'),
                   const SizedBox(height: AppSpacing.lg),
                   SectionCard(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -159,8 +153,8 @@ class _LoadsScreenState extends State<LoadsScreen> {
                           ? 'No loads configured'
                           : 'No loads match these filters',
                       message: loads.isEmpty
-                          ? 'Loads will appear here after they are configured on Central or a Smart Node.'
-                          : 'Change the search term or select a different filter.',
+                          ? 'Loads will appear here after they are configured.'
+                          : 'Change the search term or filter.',
                     )
                   else
                     ResponsiveCardGrid(
@@ -174,7 +168,7 @@ class _LoadsScreenState extends State<LoadsScreen> {
                   if (filtered.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.md),
                     Text(
-                      'Showing ${filtered.length} of ${loads.length} loads',
+                      '${filtered.length} of ${loads.length} loads',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.textTertiary,
                           ),
