@@ -7,8 +7,8 @@ import '../../auth/data/access_control_service.dart';
 import 'main_shell.dart';
 
 /// Authenticated role gate. A homeowner gets the normal control application.
-/// An installer gets a superset experience that contains those same homeowner
-/// controls plus commissioning and user administration.
+/// An installer gets a superset experience on every platform: the complete
+/// homeowner controls plus commissioning, Central operations and user access.
 class SystemEntryGate extends StatefulWidget {
   const SystemEntryGate({super.key});
 
@@ -38,10 +38,7 @@ class _SystemEntryGateState extends State<SystemEntryGate> {
 
         final access = snapshot.data!;
         if (access.role == KilowattsRole.installer) {
-          // The full installer workstation is optimized for web/desktop. On
-          // mobile an installer still gets all homeowner operations; hardware
-          // commissioning remains on the wider installer workspace.
-          return kIsWeb ? const InstallerRoleShell() : const MainShell();
+          return const InstallerRoleShell();
         }
 
         if (access.role == KilowattsRole.homeowner) {
