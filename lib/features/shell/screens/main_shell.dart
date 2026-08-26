@@ -18,15 +18,6 @@ import '../../loads/screens/loads_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../../system/screens/system_topology_screen.dart';
 
-/// The single authenticated application shell.
-///
-/// Navigation rules:
-/// - Web at desktop width: persistent left sidebar.
-/// - Compact web: one top app bar + hamburger drawer.
-/// - Native mobile/tablet: one top app bar + hamburger drawer.
-///
-/// Account role belongs in the profile area. Connection state is a compact
-/// utility status in the application chrome, never a dashboard card.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.installerMode = false});
 
@@ -72,7 +63,7 @@ class _MainShellState extends State<MainShell> {
         page: LoadsScreen(),
       ),
       const _ProductDestination(
-        label: 'System',
+        label: 'System topology',
         icon: Icons.account_tree_outlined,
         selectedIcon: Icons.account_tree_rounded,
         page: SystemTopologyScreen(),
@@ -110,7 +101,7 @@ class _MainShellState extends State<MainShell> {
           installerOnly: true,
         ),
         const _ProductDestination(
-          label: 'Operations',
+          label: 'System operations',
           icon: Icons.tune_outlined,
           selectedIcon: Icons.tune_rounded,
           page: InstallerOperationsScreen(embedded: true),
@@ -136,6 +127,7 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final destinations = _destinations();
     final safeIndex = _currentIndex < destinations.length ? _currentIndex : 0;
+    final currentTitle = destinations[safeIndex].label;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -159,7 +151,7 @@ class _MainShellState extends State<MainShell> {
                   Expanded(
                     child: Column(
                       children: [
-                        const _DesktopUtilityBar(),
+                        _DesktopUtilityBar(title: currentTitle),
                         Expanded(
                           child: IndexedStack(
                             index: safeIndex,
@@ -185,7 +177,7 @@ class _MainShellState extends State<MainShell> {
               onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
               icon: const Icon(Icons.menu_rounded),
             ),
-            title: const Text('Kilowatts'),
+            title: Text(currentTitle),
             actions: const [
               Padding(
                 padding: EdgeInsets.only(right: AppSpacing.sm),
@@ -221,7 +213,9 @@ class _MainShellState extends State<MainShell> {
 }
 
 class _DesktopUtilityBar extends StatelessWidget {
-  const _DesktopUtilityBar();
+  const _DesktopUtilityBar({required this.title});
+
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -232,9 +226,11 @@ class _DesktopUtilityBar extends StatelessWidget {
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      child: const Align(
-        alignment: Alignment.centerRight,
-        child: _HeaderConnectionStatus(),
+      child: Row(
+        children: [
+          Expanded(child: Text(title, style: AppTextStyles.title)),
+          const _HeaderConnectionStatus(),
+        ],
       ),
     );
   }
@@ -352,15 +348,6 @@ class _NavigationPanel extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
-            child: Text(
-              'WORKSPACE',
-              style: AppTextStyles.overline.copyWith(
-                color: AppColors.sidebarTextMuted,
-              ),
             ),
           ),
           Expanded(
