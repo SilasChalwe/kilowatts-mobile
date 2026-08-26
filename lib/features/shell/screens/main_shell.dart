@@ -25,9 +25,8 @@ import '../../system/screens/system_topology_screen.dart';
 /// - Compact web: one top app bar + hamburger drawer.
 /// - Native mobile/tablet: one top app bar + hamburger drawer.
 ///
-/// The header stays intentionally quiet. Account role belongs in the profile
-/// area, while connection state belongs in the navigation footer. There is no
-/// bottom navigation bar and no duplicated role/status copy in page headers.
+/// Account role belongs in the profile area. Connection state is a compact
+/// utility status in the application chrome, never a dashboard card.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.installerMode = false});
 
@@ -158,9 +157,17 @@ class _MainShellState extends State<MainShell> {
                     ),
                   ),
                   Expanded(
-                    child: IndexedStack(
-                      index: safeIndex,
-                      children: destinations.map((item) => item.page).toList(),
+                    child: Column(
+                      children: [
+                        const _DesktopUtilityBar(),
+                        Expanded(
+                          child: IndexedStack(
+                            index: safeIndex,
+                            children:
+                                destinations.map((item) => item.page).toList(),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -179,6 +186,12 @@ class _MainShellState extends State<MainShell> {
               icon: const Icon(Icons.menu_rounded),
             ),
             title: const Text('Kilowatts'),
+            actions: const [
+              Padding(
+                padding: EdgeInsets.only(right: AppSpacing.sm),
+                child: _HeaderConnectionStatus(),
+              ),
+            ],
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(1),
               child: Divider(height: 1),
@@ -200,6 +213,75 @@ class _MainShellState extends State<MainShell> {
           body: IndexedStack(
             index: safeIndex,
             children: destinations.map((item) => item.page).toList(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DesktopUtilityBar extends StatelessWidget {
+  const _DesktopUtilityBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: const Align(
+        alignment: Alignment.centerRight,
+        child: _HeaderConnectionStatus(),
+      ),
+    );
+  }
+}
+
+class _HeaderConnectionStatus extends StatelessWidget {
+  const _HeaderConnectionStatus();
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = AppStateScope.of(context);
+    return ValueListenableBuilder<MqttConnectionStatus>(
+      valueListenable: appState.connectionStatus,
+      builder: (context, status, _) {
+        final connected = status == MqttConnectionStatus.connected;
+        final busy = status == MqttConnectionStatus.connecting ||
+            status == MqttConnectionStatus.reconnecting;
+        final color = connected
+            ? AppColors.success
+            : busy
+                ? AppColors.warning
+                : AppColors.offline;
+        final label = connected
+            ? 'Online'
+            : busy
+                ? 'Connecting'
+                : 'Offline';
+
+        return Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            border: Border.all(color: color.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 7),
+              Text(label, style: AppTextStyles.caption),
+            ],
           ),
         );
       },
@@ -309,56 +391,50 @@ class _NavigationPanel extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
-            child: Column(
-              children: [
-                _ConnectionFooter(status: appState.connectionStatus),
-                const SizedBox(height: AppSpacing.sm),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.sidebarMuted,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.sidebarMuted,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.primary,
+                    child: Icon(
+                      Icons.person_outline_rounded,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 16,
-                        backgroundColor: AppColors.primary,
-                        child: Icon(
-                          Icons.person_outline_rounded,
-                          size: 18,
-                          color: Colors.white,
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          appState.currentUser?.displayName ??
+                              appState.currentUser?.email ??
+                              'Signed in',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.label.copyWith(
+                            color: AppColors.sidebarText,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              appState.currentUser?.displayName ??
-                                  appState.currentUser?.email ??
-                                  'Signed in',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.label.copyWith(
-                                color: AppColors.sidebarText,
-                              ),
-                            ),
-                            Text(
-                              installerMode ? 'Installer' : 'Homeowner',
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.sidebarTextMuted,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          installerMode ? 'Installer' : 'Homeowner',
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.sidebarTextMuted,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -428,61 +504,6 @@ class _SidebarDestination extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ConnectionFooter extends StatelessWidget {
-  const _ConnectionFooter({required this.status});
-
-  final ValueListenable<MqttConnectionStatus> status;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<MqttConnectionStatus>(
-      valueListenable: status,
-      builder: (context, value, _) {
-        final connected = value == MqttConnectionStatus.connected;
-        final busy = value == MqttConnectionStatus.connecting ||
-            value == MqttConnectionStatus.reconnecting;
-        final color = connected
-            ? AppColors.success
-            : busy
-                ? AppColors.warning
-                : AppColors.offline;
-        final label = connected
-            ? 'Connected'
-            : busy
-                ? 'Connecting…'
-                : 'Not connected';
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.sidebarMuted,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: AppSpacing.xs),
-              Expanded(
-                child: Text(
-                  label,
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.sidebarTextMuted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
