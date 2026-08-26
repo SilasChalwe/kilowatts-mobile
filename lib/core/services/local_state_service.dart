@@ -14,6 +14,8 @@ class LocalStateService {
   static const _alertsKey = 'kilowatts.alerts';
   static const _installerSafetyConfigKey = 'kilowatts.installer.safety_config';
   static const _installerBatteryConfigKey = 'kilowatts.installer.battery_config';
+  static const _installerOptimizerIntervalKey =
+      'kilowatts.installer.optimizer_interval_seconds';
 
   Future<bool> isSetupComplete() async {
     final prefs = await SharedPreferences.getInstance();
@@ -122,6 +124,16 @@ class LocalStateService {
   Future<Map<String, dynamic>?> readInstallerBatteryConfig() async {
     final prefs = await SharedPreferences.getInstance();
     return _readJsonMap(prefs.getString(_installerBatteryConfigKey));
+  }
+
+  Future<void> cacheInstallerOptimizerIntervalSeconds(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_installerOptimizerIntervalKey, seconds);
+  }
+
+  Future<int?> readInstallerOptimizerIntervalSeconds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_installerOptimizerIntervalKey);
   }
 
   Future<void> _writeInstallerSnapshot(
