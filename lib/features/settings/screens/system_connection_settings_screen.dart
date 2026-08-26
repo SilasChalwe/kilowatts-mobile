@@ -275,6 +275,7 @@ class _ConnectionEditorDialogState extends State<_ConnectionEditorDialog> {
       host: _host.text.trim(),
       port: port,
       useTls: _useTls,
+      webSocketPath: widget.initial.webSocketPath,
       topicNamespace: _namespace.text.trim(),
       username: _username.text.trim().isEmpty ? null : _username.text.trim(),
       password: newPassword.isEmpty ? widget.initial.password : newPassword,
