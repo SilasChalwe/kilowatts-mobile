@@ -39,10 +39,13 @@ class InstallerRoleShell extends StatelessWidget {
               switch (action) {
                 case _InstallerAction.console:
                   _open(context, const InstallerPortalScreen());
+                  break;
                 case _InstallerAction.operations:
                   _open(context, const InstallerOperationsScreen());
+                  break;
                 case _InstallerAction.users:
                   _open(context, const InstallerUsersScreen());
+                  break;
               }
             },
             itemBuilder: (context) => const [
