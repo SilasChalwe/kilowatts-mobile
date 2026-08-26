@@ -4,7 +4,6 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/trend_chart_card.dart';
 import '../../alerts/models/alert_model.dart';
@@ -23,7 +22,7 @@ class HistoryScreen extends StatelessWidget {
       valueListenable: appState.socSamples,
       builder: (context, socSamples, _) {
         return ValueListenableBuilder<List<double>>(
-          valueListenable: appState.committedPowerSamples,
+          valueListenable: appState.activeLoadPowerSamples,
           builder: (context, powerSamples, _) {
             return ListView(
               children: [
@@ -38,9 +37,9 @@ class HistoryScreen extends StatelessWidget {
                         caption: 'State of charge (%) · this session',
                       ),
                       TrendChartCard(
-                        title: 'Committed power',
+                        title: 'Active load power',
                         values: powerSamples,
-                        caption: 'Committed power (W) · this session',
+                        caption: 'Fixed ON + selected automatic load power (W)',
                       ),
                     ],
                   ),
@@ -62,7 +61,6 @@ class HistoryScreen extends StatelessWidget {
           return const EmptyState(
             icon: Icons.event_note_outlined,
             title: 'No events this session',
-            message: 'System events will appear here as they are received.',
           );
         }
 
@@ -107,37 +105,26 @@ class HistoryScreen extends StatelessWidget {
                         AppSpacing.pageDesktop,
                         0,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const PageHeader(
-                            title: 'Reports',
-                            subtitle:
-                                'Usage trends and system events captured during this application session.',
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
-                          const SizedBox(height: AppSpacing.lg),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.surfaceMuted,
-                                borderRadius: BorderRadius.circular(AppRadius.md),
-                              ),
-                              padding: const EdgeInsets.all(4),
-                              child: const SizedBox(
-                                width: 280,
-                                child: TabBar(
-                                  dividerColor: Colors.transparent,
-                                  indicatorSize: TabBarIndicatorSize.tab,
-                                  tabs: [
-                                    Tab(text: 'Usage'),
-                                    Tab(text: 'Events'),
-                                  ],
-                                ),
-                              ),
+                          padding: const EdgeInsets.all(4),
+                          child: const SizedBox(
+                            width: 280,
+                            child: TabBar(
+                              dividerColor: Colors.transparent,
+                              indicatorSize: TabBarIndicatorSize.tab,
+                              tabs: [
+                                Tab(text: 'Usage'),
+                                Tab(text: 'Events'),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: AppSpacing.sm),
@@ -148,7 +135,7 @@ class HistoryScreen extends StatelessWidget {
             )
           : Scaffold(
               appBar: AppBar(
-                title: const Text('History & reports'),
+                title: const Text('Reports'),
                 bottom: const TabBar(
                   tabs: [Tab(text: 'Usage'), Tab(text: 'Events')],
                 ),
