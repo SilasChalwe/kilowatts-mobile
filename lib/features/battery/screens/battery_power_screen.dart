@@ -25,9 +25,8 @@ class BatteryPowerScreen extends StatelessWidget {
       builder: (context, state, _) {
         if (state == null) {
           return ErrorState(
-            title: 'Battery telemetry unavailable',
-            message:
-                'Central has not published battery data yet. Check the connection and battery monitor.',
+            title: 'Battery data unavailable',
+            message: 'Central has not published battery telemetry.',
             onRetry: appState.connectMqtt,
           );
         }
@@ -41,11 +40,7 @@ class BatteryPowerScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (embedded) ...[
-                      const PageHeader(
-                        title: 'Battery & power',
-                        subtitle:
-                            'Live state of charge, available power and battery demand.',
-                      ),
+                      const PageHeader(title: 'Battery & power'),
                       const SizedBox(height: AppSpacing.lg),
                     ],
                     ResponsiveCardGrid(
@@ -60,7 +55,7 @@ class BatteryPowerScreen extends StatelessWidget {
                     TrendChartCard(
                       title: 'Battery power · this session',
                       values: powerSamples,
-                      caption: 'Most recent battery power readings in watts',
+                      caption: 'Recent battery power readings',
                     ),
                   ],
                 ),
