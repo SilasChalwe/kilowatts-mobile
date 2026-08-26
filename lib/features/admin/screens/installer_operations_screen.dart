@@ -6,13 +6,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/section_card.dart';
 
 class InstallerOperationsScreen extends StatefulWidget {
-  const InstallerOperationsScreen({super.key, this.embedded = false});
-
-  final bool embedded;
+  const InstallerOperationsScreen({super.key});
 
   @override
   State<InstallerOperationsScreen> createState() =>
@@ -99,138 +96,95 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
     return '$seconds s';
   }
 
-  Widget _content(BuildContext context, {required bool showPageHeader}) {
-    final appState = AppStateScope.of(context);
-    return ValueListenableBuilder(
-      valueListenable: appState.systemState,
-      builder: (context, state, _) {
-        return ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          children: [
-            if (showPageHeader) ...[
-              const PageHeader(
-                title: 'System operations',
-                subtitle: 'Run optimization and control its automatic cadence.',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-            ],
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final twoColumns = constraints.maxWidth >= 760;
-                final gap = AppSpacing.md;
-                final width = twoColumns
-                    ? (constraints.maxWidth - gap) / 2
-                    : constraints.maxWidth;
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: [
-                    SizedBox(
-                      width: width,
-                      child: SectionCard(
-                        title: 'Best-First optimization',
-                        child: Column(
-                          children: [
-                            SectionRow(
-                              label: 'Last optimization',
-                              value: Formatters.relativeTime(
-                                state?.lastOptimizationAt,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: FilledButton.icon(
-                                onPressed: _optimizing ? null : _runOptimization,
-                                icon: _optimizing
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.play_arrow_rounded),
-                                label: Text(
-                                  _optimizing ? 'Requesting…' : 'Run now',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: SectionCard(
-                        title: 'Automatic optimization',
-                        child: Column(
-                          children: [
-                            SectionRow(
-                              label: 'Interval',
-                              value: _lastAppliedInterval == null
-                                  ? 'Not published by Central'
-                                  : '${_friendlyInterval(_lastAppliedInterval!)} · last applied here',
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: OutlinedButton.icon(
-                                onPressed:
-                                    _savingInterval ? null : _changeInterval,
-                                icon: const Icon(Icons.edit_outlined),
-                                label: Text(
-                                  _savingInterval
-                                      ? 'Applying…'
-                                      : 'Change interval',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            if (_message != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: (_messageIsError ? AppColors.error : AppColors.success)
-                      .withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  _message!,
-                  style: AppTextStyles.caption.copyWith(
-                    color: _messageIsError
-                        ? AppColors.error
-                        : AppColors.success,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (widget.embedded) {
-      return Material(
-        color: Colors.transparent,
-        child: SafeArea(child: _content(context, showPageHeader: true)),
-      );
-    }
-
+    final appState = AppStateScope.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('System operations')),
-      body: SafeArea(child: _content(context, showPageHeader: false)),
+      body: SafeArea(
+        child: ValueListenableBuilder(
+          valueListenable: appState.systemState,
+          builder: (context, state, _) {
+            return ListView(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              children: [
+                SectionCard(
+                  title: 'Best-First optimization',
+                  child: Column(
+                    children: [
+                      SectionRow(
+                        label: 'Last optimization',
+                        value: Formatters.relativeTime(state?.lastOptimizationAt),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          onPressed: _optimizing ? null : _runOptimization,
+                          icon: _optimizing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.play_arrow_rounded),
+                          label: Text(
+                            _optimizing ? 'Requesting…' : 'Run now',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SectionCard(
+                  title: 'Automatic optimization',
+                  child: Column(
+                    children: [
+                      SectionRow(
+                        label: 'Interval',
+                        value: _lastAppliedInterval == null
+                            ? 'Not published by Central'
+                            : '${_friendlyInterval(_lastAppliedInterval!)} · last applied here',
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: _savingInterval ? null : _changeInterval,
+                          icon: const Icon(Icons.edit_outlined),
+                          label: Text(
+                            _savingInterval ? 'Applying…' : 'Change interval',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_message != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: (_messageIsError ? AppColors.error : AppColors.success)
+                          .withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _message!,
+                      style: AppTextStyles.caption.copyWith(
+                        color: _messageIsError
+                            ? AppColors.error
+                            : AppColors.success,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }

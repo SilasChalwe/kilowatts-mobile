@@ -4,14 +4,10 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/page_header.dart';
-import '../../../core/widgets/section_card.dart';
 import '../../auth/data/access_control_service.dart';
 
 class InstallerUsersScreen extends StatefulWidget {
-  const InstallerUsersScreen({super.key, this.embedded = false});
-
-  final bool embedded;
+  const InstallerUsersScreen({super.key});
 
   @override
   State<InstallerUsersScreen> createState() => _InstallerUsersScreenState();
@@ -39,7 +35,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       if (!mounted) return;
       final message = error is ArgumentError
           ? error.message?.toString() ?? 'Invalid access configuration.'
-          : 'Could not save access. Check Firestore connectivity and permissions.';
+          : 'Could not save access.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
@@ -55,9 +51,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Revoke access?'),
-        content: Text(
-          '${user.email} will no longer be able to access this Kilowatts system.',
-        ),
+        content: Text(user.email),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -87,262 +81,88 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     }
   }
 
-  Widget _content(BuildContext context, {required bool showPageHeader}) {
-    final appState = AppStateScope.of(context);
-    return StreamBuilder<List<KilowattsUserAccess>>(
-      stream: appState.watchAccessUsers(),
-      builder: (context, snapshot) {
-        final users = snapshot.data ?? const <KilowattsUserAccess>[];
-        final homeowners = users
-            .where((user) => user.role == KilowattsRole.homeowner)
-            .toList();
-        final installers = users
-            .where((user) => user.role == KilowattsRole.installer)
-            .toList();
-
-        return ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          children: [
-            if (showPageHeader) ...[
-              PageHeader(
-                title: 'Users & access',
-                subtitle: 'Manage who can control and administer the installation.',
-                actions: [
-                  FilledButton.icon(
-                    onPressed: () => _openEditor(),
-                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                    label: const Text('Add user'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-            ],
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                !snapshot.hasData)
-              const SectionCard(
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    SizedBox(width: AppSpacing.sm),
-                    Text('Loading access records…'),
-                  ],
-                ),
-              )
-            else if (snapshot.hasError)
-              _AccessStatusCard(
-                onAdd: () => _openEditor(),
-              )
-            else ...[
-              _summaryGrid(homeowners.length, installers.length, users.length),
-              const SizedBox(height: AppSpacing.lg),
-              if (users.isEmpty)
-                SectionCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.people_outline_rounded,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'No users assigned yet',
-                                style: AppTextStyles.label,
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Add a homeowner or another installer when you are ready.',
-                                style: AppTextStyles.caption,
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                              FilledButton.icon(
-                                onPressed: () => _openEditor(),
-                                icon: const Icon(
-                                  Icons.person_add_alt_1_outlined,
-                                  size: 18,
-                                ),
-                                label: const Text('Add first user'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final twoColumns = constraints.maxWidth >= 900;
-                    final gap = AppSpacing.md;
-                    final width = twoColumns
-                        ? (constraints.maxWidth - gap) / 2
-                        : constraints.maxWidth;
-                    return Wrap(
-                      spacing: gap,
-                      runSpacing: gap,
-                      crossAxisAlignment: WrapCrossAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: width,
-                          child: _UserSection(
-                            title: 'Homeowners',
-                            description:
-                                'Accounts assigned to a specific installation.',
-                            users: homeowners,
-                            currentEmail: appState.currentUser?.email,
-                            onEdit: _openEditor,
-                            onRevoke: _revoke,
-                          ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: _UserSection(
-                            title: 'Installers / administrators',
-                            description:
-                                'Accounts with homeowner controls and installation tools.',
-                            users: installers,
-                            currentEmail: appState.currentUser?.email,
-                            onEdit: _openEditor,
-                            onRevoke: _revoke,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _summaryGrid(int homeowners, int installers, int total) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final gap = AppSpacing.sm;
-        final columns = constraints.maxWidth >= 720 ? 3 : 1;
-        final width =
-            (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            SizedBox(
-              width: width,
-              child: _CountCard(
-                icon: Icons.home_outlined,
-                label: 'Homeowners',
-                value: homeowners,
-              ),
-            ),
-            SizedBox(
-              width: width,
-              child: _CountCard(
-                icon: Icons.admin_panel_settings_outlined,
-                label: 'Installers',
-                value: installers,
-              ),
-            ),
-            SizedBox(
-              width: width,
-              child: _CountCard(
-                icon: Icons.people_outline,
-                label: 'Total access',
-                value: total,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (widget.embedded) {
-      return Material(
-        color: Colors.transparent,
-        child: SafeArea(child: _content(context, showPageHeader: true)),
-      );
-    }
-
+    final appState = AppStateScope.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Users & access'),
         actions: [
-          IconButton(
-            tooltip: 'Add user',
-            onPressed: () => _openEditor(),
-            icon: const Icon(Icons.person_add_alt_1_outlined),
+          FilledButton.icon(
+            onPressed: _openEditor,
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+            label: const Text('Add user'),
           ),
+          const SizedBox(width: AppSpacing.md),
         ],
       ),
-      body: SafeArea(child: _content(context, showPageHeader: false)),
-    );
-  }
-}
+      body: SafeArea(
+        child: StreamBuilder<List<KilowattsUserAccess>>(
+          stream: appState.watchAccessUsers(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return const _StatePanel(
+                icon: Icons.cloud_off_outlined,
+                title: 'Users unavailable',
+                message: 'Check Firestore access and connectivity.',
+              );
+            }
 
-class _AccessStatusCard extends StatelessWidget {
-  const _AccessStatusCard({required this.onAdd});
+            final users = snapshot.data ?? const <KilowattsUserAccess>[];
+            final homeowners = users
+                .where((user) => user.role == KilowattsRole.homeowner)
+                .toList();
+            final installers = users
+                .where((user) => user.role == KilowattsRole.installer)
+                .toList();
 
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.cloud_off_outlined,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'User directory unavailable',
-                    style: AppTextStyles.label,
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'The app could not read Firestore access records. Check connectivity and installer permissions. The list will recover automatically when the connection returns.',
-                    style: AppTextStyles.caption,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  OutlinedButton.icon(
-                    onPressed: onAdd,
-                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                    label: const Text('Add user anyway'),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            return ListView(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              children: [
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    _CountCard(
+                      icon: Icons.home_outlined,
+                      label: 'Homeowners',
+                      value: homeowners.length,
+                    ),
+                    _CountCard(
+                      icon: Icons.admin_panel_settings_outlined,
+                      label: 'Installers',
+                      value: installers.length,
+                    ),
+                    _CountCard(
+                      icon: Icons.people_outline,
+                      label: 'Total',
+                      value: users.length,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                _UserSection(
+                  title: 'Homeowners',
+                  users: homeowners,
+                  currentEmail: appState.currentUser?.email,
+                  onEdit: _openEditor,
+                  onRevoke: _revoke,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                _UserSection(
+                  title: 'Installers / administrators',
+                  users: installers,
+                  currentEmail: appState.currentUser?.email,
+                  onEdit: _openEditor,
+                  onRevoke: _revoke,
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -483,18 +303,17 @@ class _CountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return Container(
+      width: 165,
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Icon(icon, color: AppColors.textSecondary, size: 20),
-          ),
+          Icon(icon, color: AppColors.textSecondary),
           const SizedBox(width: AppSpacing.sm),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -512,7 +331,6 @@ class _CountCard extends StatelessWidget {
 class _UserSection extends StatelessWidget {
   const _UserSection({
     required this.title,
-    required this.description,
     required this.users,
     required this.currentEmail,
     required this.onEdit,
@@ -520,7 +338,6 @@ class _UserSection extends StatelessWidget {
   });
 
   final String title;
-  final String description;
   final List<KilowattsUserAccess> users;
   final String? currentEmail;
   final ValueChanged<KilowattsUserAccess> onEdit;
@@ -528,89 +345,133 @@ class _UserSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
-      title: title,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(description, style: AppTextStyles.caption),
-          const SizedBox(height: AppSpacing.md),
-          if (users.isEmpty)
-            const Text('None assigned.', style: AppTextStyles.caption)
-          else
-            ...users.map((user) {
-              final isCurrent =
-                  user.email.toLowerCase() == currentEmail?.toLowerCase();
-              return Container(
-                margin: const EdgeInsets.only(bottom: AppSpacing.xs),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(10),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: AppTextStyles.title),
+        const SizedBox(height: AppSpacing.sm),
+        if (users.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text('None assigned.'),
+          )
+        else
+          ...users.map((user) {
+            final isCurrent =
+                user.email.toLowerCase() == currentEmail?.toLowerCase();
+            return Container(
+              margin: const EdgeInsets.only(bottom: AppSpacing.xs),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.surfaceMuted,
+                  child: Icon(
+                    user.role == KilowattsRole.installer
+                        ? Icons.admin_panel_settings_outlined
+                        : Icons.home_outlined,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-                child: ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.surface,
-                    child: Icon(
-                      user.role == KilowattsRole.installer
-                          ? Icons.admin_panel_settings_outlined
-                          : Icons.home_outlined,
-                      size: 19,
-                      color: AppColors.textSecondary,
+                title: Row(
+                  children: [
+                    Flexible(child: Text(user.email)),
+                    if (isCurrent) ...[
+                      const SizedBox(width: AppSpacing.xs),
+                      const _YouBadge(),
+                    ],
+                  ],
+                ),
+                subtitle: Text(
+                  user.role == KilowattsRole.homeowner
+                      ? user.installationId ?? 'No installation'
+                      : 'Installer / Administrator',
+                ),
+                trailing: PopupMenuButton<_UserAction>(
+                  onSelected: (action) {
+                    if (action == _UserAction.edit) onEdit(user);
+                    if (action == _UserAction.revoke && !isCurrent) {
+                      onRevoke(user);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: _UserAction.edit,
+                      child: Text('Edit access'),
                     ),
-                  ),
-                  title: Row(
-                    children: [
-                      Flexible(child: Text(user.email)),
-                      if (isCurrent) ...[
-                        const SizedBox(width: AppSpacing.xs),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text('You', style: AppTextStyles.caption),
-                        ),
-                      ],
-                    ],
-                  ),
-                  subtitle: Text(
-                    user.role == KilowattsRole.homeowner
-                        ? user.installationId ?? 'No installation'
-                        : 'Installer / Administrator',
-                  ),
-                  trailing: PopupMenuButton<_UserAction>(
-                    onSelected: (action) {
-                      if (action == _UserAction.edit) onEdit(user);
-                      if (action == _UserAction.revoke && !isCurrent) {
-                        onRevoke(user);
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: _UserAction.edit,
-                        child: Text('Edit access'),
+                    PopupMenuItem(
+                      value: _UserAction.revoke,
+                      enabled: !isCurrent,
+                      child: Text(
+                        isCurrent ? 'Current account' : 'Revoke access',
                       ),
-                      PopupMenuItem(
-                        value: _UserAction.revoke,
-                        enabled: !isCurrent,
-                        child: Text(
-                          isCurrent ? 'Current account' : 'Revoke access',
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              );
-            }),
-        ],
-      ),
+              ),
+            );
+          }),
+      ],
     );
   }
 }
 
 enum _UserAction { edit, revoke }
+
+class _YouBadge extends StatelessWidget {
+  const _YouBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.info.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'You',
+        style: AppTextStyles.caption.copyWith(color: AppColors.info),
+      ),
+    );
+  }
+}
+
+class _StatePanel extends StatelessWidget {
+  const _StatePanel({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 42, color: AppColors.textSecondary),
+            const SizedBox(height: AppSpacing.sm),
+            Text(title, style: AppTextStyles.title),
+            const SizedBox(height: AppSpacing.xs),
+            Text(message, style: AppTextStyles.caption),
+          ],
+        ),
+      ),
+    );
+  }
+}
