@@ -2,22 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/page_header.dart';
 import '../models/alert_model.dart';
 import '../widgets/alert_card.dart';
 
 enum _AlertFilter { all, critical, warning, info }
 
-/// Alerts arrive one at a time on `kilowatts/v1/events` — there is no
-/// "history of past alerts" topic, so this list only ever holds what has
-/// streamed in since the device was first connected (accumulated centrally
-/// in [AppState.alerts], not by this screen, and cached on-device via
-/// LocalStateService.cacheAlerts so it survives an app restart).
-/// Acknowledgement is a local, on-device convenience; there is no broker
-/// ack-back channel — Central has no concept of alert IDs to acknowledge.
 class AlertsScreen extends StatefulWidget {
-  const AlertsScreen({super.key});
+  const AlertsScreen({super.key, this.embedded = false});
+
+  /// Embedded pages live inside MainShell and must not create another app bar.
+  /// Standalone pages create their own Scaffold so Material controls and back
+  /// navigation always have the correct ancestors.
+  final bool embedded;
 
   @override
   State<AlertsScreen> createState() => _AlertsScreenState();
@@ -31,81 +29,104 @@ class _AlertsScreenState extends State<AlertsScreen> {
       case _AlertFilter.all:
         return alerts;
       case _AlertFilter.critical:
-        return alerts
-            .where((a) => a.severity == AlertSeverity.critical)
-            .toList();
+        return alerts.where((a) => a.severity == AlertSeverity.critical).toList();
       case _AlertFilter.warning:
-        return alerts
-            .where((a) => a.severity == AlertSeverity.warning)
-            .toList();
+        return alerts.where((a) => a.severity == AlertSeverity.warning).toList();
       case _AlertFilter.info:
         return alerts.where((a) => a.severity == AlertSeverity.info).toList();
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _content(BuildContext context, {required bool showPageHeader}) {
     final appState = AppStateScope.of(context);
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Text('Alerts', style: AppTextStyles.title),
-                const Spacer(),
-                TextButton(
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showPageHeader) ...[
+            PageHeader(
+              title: 'Alerts',
+              subtitle: 'Warnings and system events from this installation.',
+              actions: [
+                TextButton.icon(
                   onPressed: appState.acknowledgeAllAlerts,
-                  child: const Text('Mark all read'),
+                  icon: const Icon(Icons.done_all_rounded, size: 18),
+                  label: const Text('Mark all read'),
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  for (final filter in _AlertFilter.values) ...[
-                    ChoiceChip(
-                      label: Text(_label(filter)),
-                      selected: _filter == filter,
-                      onSelected: (_) => setState(() => _filter = filter),
-                    ),
-                    const SizedBox(width: AppSpacing.xs),
-                  ],
-                ],
+            const SizedBox(height: AppSpacing.md),
+          ] else
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: appState.acknowledgeAllAlerts,
+                icon: const Icon(Icons.done_all_rounded, size: 18),
+                label: const Text('Mark all read'),
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Expanded(
-              child: ValueListenableBuilder<List<AlertModel>>(
-                valueListenable: appState.alerts,
-                builder: (context, alerts, _) {
-                  final filtered = _apply(alerts);
-                  if (filtered.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.notifications_off_outlined,
-                      title: 'No Alerts',
-                      message: 'System alerts will appear here as they happen.',
-                    );
-                  }
-                  return ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (context, index) =>
-                        AlertCard(alert: filtered[index]),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _AlertFilter.values.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
+              itemBuilder: (context, index) {
+                final filter = _AlertFilter.values[index];
+                return ChoiceChip(
+                  label: Text(_label(filter)),
+                  selected: _filter == filter,
+                  onSelected: (_) => setState(() => _filter = filter),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Expanded(
+            child: ValueListenableBuilder<List<AlertModel>>(
+              valueListenable: appState.alerts,
+              builder: (context, alerts, _) {
+                final filtered = _apply(alerts);
+                if (filtered.isEmpty) {
+                  return EmptyState(
+                    compact: true,
+                    icon: Icons.notifications_none_rounded,
+                    title: alerts.isEmpty ? 'No alerts' : 'No matching alerts',
+                    message: alerts.isEmpty
+                        ? 'Everything reported by the system is clear right now.'
+                        : 'Try another alert filter.',
                   );
-                },
-              ),
+                }
+                return ListView.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
+                  itemBuilder: (context, index) =>
+                      AlertCard(alert: filtered[index]),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return Material(
+        color: Colors.transparent,
+        child: SafeArea(
+          child: _content(context, showPageHeader: true),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Alerts')),
+      body: SafeArea(child: _content(context, showPageHeader: false)),
     );
   }
 

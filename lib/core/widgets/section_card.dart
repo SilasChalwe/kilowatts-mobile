@@ -25,7 +25,7 @@ class SectionCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
@@ -33,9 +33,18 @@ class SectionCard extends StatelessWidget {
         children: [
           if (title != null) ...[
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(child: Text(title!, style: AppTextStyles.label)),
-                ?trailing,
+                Expanded(
+                  child: Text(
+                    title!,
+                    style: AppTextStyles.body.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing!,
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -64,14 +73,26 @@ class SectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: AppTextStyles.body)),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
           const SizedBox(width: AppSpacing.sm),
           if (valueWidget != null)
-            Flexible(child: Align(alignment: Alignment.centerRight, child: valueWidget!))
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: valueWidget!,
+              ),
+            )
           else
             Flexible(
               child: Text(
@@ -84,7 +105,7 @@ class SectionRow extends StatelessWidget {
           if (onTap != null) ...[
             const SizedBox(width: AppSpacing.xxs),
             const Icon(
-              Icons.chevron_right,
+              Icons.chevron_right_rounded,
               size: 18,
               color: AppColors.textSecondary,
             ),
@@ -95,7 +116,7 @@ class SectionRow extends StatelessWidget {
 
     if (onTap == null) return row;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: onTap,
       child: row,
     );
