@@ -25,8 +25,9 @@ import '../../system/screens/system_topology_screen.dart';
 /// - Compact web: one top app bar + hamburger drawer.
 /// - Native mobile/tablet: one top app bar + hamburger drawer.
 ///
-/// There is intentionally no bottom navigation bar. Installer access extends
-/// the same destination list instead of nesting a second application shell.
+/// The header stays intentionally quiet. Account role belongs in the profile
+/// area, while connection state belongs in the navigation footer. There is no
+/// bottom navigation bar and no duplicated role/status copy in page headers.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.installerMode = false});
 
@@ -177,18 +178,7 @@ class _MainShellState extends State<MainShell> {
               onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
               icon: const Icon(Icons.menu_rounded),
             ),
-            titleSpacing: 0,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Kilowatts', style: AppTextStyles.label),
-                Text(
-                  destinations[safeIndex].label,
-                  style: AppTextStyles.caption,
-                ),
-              ],
-            ),
+            title: const Text('Kilowatts'),
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(1),
               child: Divider(height: 1),
@@ -272,22 +262,11 @@ class _NavigationPanel extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Kilowatts',
-                        style: AppTextStyles.sectionTitle.copyWith(
-                          color: AppColors.sidebarText,
-                        ),
-                      ),
-                      Text(
-                        installerMode ? 'Installer workspace' : 'Energy manager',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.sidebarTextMuted,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Kilowatts',
+                    style: AppTextStyles.sectionTitle.copyWith(
+                      color: AppColors.sidebarText,
+                    ),
                   ),
                 ),
               ],
@@ -472,10 +451,10 @@ class _ConnectionFooter extends StatelessWidget {
                 ? AppColors.warning
                 : AppColors.offline;
         final label = connected
-            ? 'System connected'
+            ? 'Connected'
             : busy
                 ? 'Connecting…'
-                : 'System offline';
+                : 'Not connected';
 
         return Container(
           width: double.infinity,
