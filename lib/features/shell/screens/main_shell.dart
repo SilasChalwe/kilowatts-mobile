@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
@@ -15,9 +16,11 @@ import '../../system/screens/system_topology_screen.dart';
 import '../widgets/app_bottom_navigation.dart';
 import 'more_screen.dart';
 
-/// One responsive product shell for homeowner and installer roles.
-/// Phones use the familiar bottom navigation. Wider screens use a persistent
-/// sidebar so the product does not look like a stretched mobile application.
+/// Platform-aware application shell.
+///
+/// Web never renders the mobile bottom bar. Wide web gets a persistent
+/// sidebar; compact web gets one hamburger/drawer. Native mobile keeps the
+/// bottom navigation and does not add a competing hamburger navigation.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.installerMode = false});
 
@@ -28,7 +31,7 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  static const _desktopBreakpoint = 900.0;
+  static const _wideWebBreakpoint = 980.0;
 
   int _currentIndex = 0;
   bool _didRequestConnect = false;
@@ -46,6 +49,63 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  List<_ShellDestination> _destinations() => [
+        const _ShellDestination(
+          label: 'Overview',
+          icon: Icons.home_outlined,
+          selectedIcon: Icons.home_rounded,
+        ),
+        const _ShellDestination(
+          label: 'Loads',
+          icon: Icons.bolt_outlined,
+          selectedIcon: Icons.bolt_rounded,
+        ),
+        const _ShellDestination(
+          label: 'System',
+          icon: Icons.account_tree_outlined,
+          selectedIcon: Icons.account_tree_rounded,
+        ),
+        const _ShellDestination(
+          label: 'Alerts',
+          icon: Icons.notifications_outlined,
+          selectedIcon: Icons.notifications_rounded,
+        ),
+        if (widget.installerMode) ...[
+          const _ShellDestination(
+            label: 'Installer console',
+            icon: Icons.build_outlined,
+            selectedIcon: Icons.build_rounded,
+            group: 'INSTALLATION',
+          ),
+          const _ShellDestination(
+            label: 'Operations',
+            icon: Icons.tune_outlined,
+            selectedIcon: Icons.tune_rounded,
+          ),
+          const _ShellDestination(
+            label: 'Users & access',
+            icon: Icons.group_outlined,
+            selectedIcon: Icons.group_rounded,
+          ),
+        ],
+      ];
+
+  List<Widget> _pages() => [
+        DashboardScreen(
+          onViewAllAlerts: () => setState(() => _currentIndex = 3),
+        ),
+        const LoadsScreen(),
+        const SystemTopologyScreen(embedded: true),
+        const AlertsScreen(embedded: true),
+        if (widget.installerMode) ...[
+          const InstallerConsoleScreen(embedded: true),
+          const InstallerOperationsScreen(embedded: true),
+          const InstallerUsersScreen(embedded: true),
+        ],
+      ];
+
+  void _select(int index) => setState(() => _currentIndex = index);
+
   void _openMore() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -54,97 +114,115 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  void _openInstallerConsole() {
-    final desktop = MediaQuery.sizeOf(context).width >= _desktopBreakpoint;
-    if (desktop && widget.installerMode) {
-      setState(() => _currentIndex = 4);
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const InstallerConsoleScreen()),
-    );
-  }
-
   void _handleMobileDestination(int index) {
     if (index == 4) {
       _openMore();
       return;
     }
-    setState(() => _currentIndex = index);
+    _select(index);
   }
-
-  List<Widget> _pages() => [
-    DashboardScreen(
-      onViewAllAlerts: () => setState(() => _currentIndex = 3),
-      onOpenInstallerConsole: widget.installerMode ? _openInstallerConsole : null,
-    ),
-    const LoadsScreen(),
-    const SystemTopologyScreen(embedded: true),
-    const AlertsScreen(embedded: true),
-    if (widget.installerMode) ...[
-      const InstallerConsoleScreen(embedded: true),
-      const InstallerOperationsScreen(embedded: true),
-      const InstallerUsersScreen(embedded: true),
-    ],
-  ];
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final desktop = constraints.maxWidth >= _desktopBreakpoint;
-        final pages = _pages();
-        final effectiveIndex = _currentIndex < pages.length ? _currentIndex : 0;
+    final pages = _pages();
+    final destinations = _destinations();
+    final effectiveIndex = _currentIndex < pages.length ? _currentIndex : 0;
 
-        if (desktop) {
-          return Scaffold(
-            body: SafeArea(
-              child: Row(
-                children: [
-                  _DesktopSidebar(
-                    installerMode: widget.installerMode,
-                    selectedIndex: effectiveIndex,
-                    onSelect: (index) => setState(() => _currentIndex = index),
-                    onMore: _openMore,
-                  ),
-                  const VerticalDivider(width: 1, color: AppColors.border),
-                  Expanded(
-                    child: IndexedStack(index: effectiveIndex, children: pages),
-                  ),
-                ],
+    if (kIsWeb) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= _wideWebBreakpoint;
+          if (wide) {
+            return Scaffold(
+              body: SafeArea(
+                child: Row(
+                  children: [
+                    _WebSidebar(
+                      installerMode: widget.installerMode,
+                      destinations: destinations,
+                      selectedIndex: effectiveIndex,
+                      onSelect: _select,
+                      onMore: _openMore,
+                    ),
+                    const VerticalDivider(width: 1, color: AppColors.border),
+                    Expanded(
+                      child: IndexedStack(
+                        index: effectiveIndex,
+                        children: pages,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        }
+            );
+          }
 
-        final mobileIndex = effectiveIndex > 3 ? 0 : effectiveIndex;
-        return Scaffold(
-          body: SafeArea(
-            bottom: false,
-            child: IndexedStack(
-              index: mobileIndex,
-              children: pages.take(4).toList(growable: false),
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(destinations[effectiveIndex].label),
             ),
-          ),
-          bottomNavigationBar: AppBottomNavigation(
-            currentIndex: mobileIndex,
-            onTap: _handleMobileDestination,
-          ),
-        );
-      },
+            drawer: _WebDrawer(
+              installerMode: widget.installerMode,
+              destinations: destinations,
+              selectedIndex: effectiveIndex,
+              onSelect: (index) {
+                Navigator.of(context).pop();
+                _select(index);
+              },
+              onMore: () {
+                Navigator.of(context).pop();
+                _openMore();
+              },
+            ),
+            body: IndexedStack(index: effectiveIndex, children: pages),
+          );
+        },
+      );
+    }
+
+    // Native mobile: one navigation system only — the bottom bar.
+    final mobileIndex = effectiveIndex > 3 ? 0 : effectiveIndex;
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: IndexedStack(
+          index: mobileIndex,
+          children: pages.take(4).toList(growable: false),
+        ),
+      ),
+      bottomNavigationBar: AppBottomNavigation(
+        currentIndex: mobileIndex,
+        onTap: _handleMobileDestination,
+      ),
     );
   }
 }
 
-class _DesktopSidebar extends StatelessWidget {
-  const _DesktopSidebar({
+class _ShellDestination {
+  const _ShellDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+    this.group,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  final String? group;
+}
+
+class _WebSidebar extends StatelessWidget {
+  const _WebSidebar({
     required this.installerMode,
+    required this.destinations,
     required this.selectedIndex,
     required this.onSelect,
     required this.onMore,
   });
 
   final bool installerMode;
+  final List<_ShellDestination> destinations;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final VoidCallback onMore;
@@ -152,7 +230,7 @@ class _DesktopSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 244,
+      width: 248,
       child: ColoredBox(
         color: AppColors.surface,
         child: Padding(
@@ -160,105 +238,40 @@ class _DesktopSidebar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
+              _BrandHeader(installerMode: installerMode),
+              const SizedBox(height: AppSpacing.lg),
+              Expanded(
+                child: ListView(
                   children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                      child: const Icon(
-                        Icons.bolt_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Kilowatts', style: AppTextStyles.label),
-                          Text(
-                            installerMode ? 'Installer workspace' : 'Energy manager',
+                    for (var index = 0; index < destinations.length; index++) ...[
+                      if (destinations[index].group != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 20, 10, 8),
+                          child: Text(
+                            destinations[index].group!,
                             style: AppTextStyles.caption,
                           ),
-                        ],
+                        ),
+                      _NavItem(
+                        destination: destinations[index],
+                        selected: selectedIndex == index,
+                        onTap: () => onSelect(index),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.lg),
-              _SidebarItem(
-                icon: Icons.home_outlined,
-                selectedIcon: Icons.home_rounded,
-                label: 'Overview',
-                selected: selectedIndex == 0,
-                onTap: () => onSelect(0),
-              ),
-              _SidebarItem(
-                icon: Icons.bolt_outlined,
-                selectedIcon: Icons.bolt_rounded,
-                label: 'Loads',
-                selected: selectedIndex == 1,
-                onTap: () => onSelect(1),
-              ),
-              _SidebarItem(
-                icon: Icons.account_tree_outlined,
-                selectedIcon: Icons.account_tree_rounded,
-                label: 'System',
-                selected: selectedIndex == 2,
-                onTap: () => onSelect(2),
-              ),
-              _SidebarItem(
-                icon: Icons.notifications_outlined,
-                selectedIcon: Icons.notifications_rounded,
-                label: 'Alerts',
-                selected: selectedIndex == 3,
-                onTap: () => onSelect(3),
-              ),
-              if (installerMode) ...[
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(10, 22, 10, 8),
-                  child: Text('INSTALLATION', style: AppTextStyles.caption),
+              _NavItem(
+                destination: const _ShellDestination(
+                  label: 'More',
+                  icon: Icons.more_horiz_rounded,
+                  selectedIcon: Icons.more_horiz_rounded,
                 ),
-                _SidebarItem(
-                  icon: Icons.build_outlined,
-                  selectedIcon: Icons.build_rounded,
-                  label: 'Installer console',
-                  selected: selectedIndex == 4,
-                  onTap: () => onSelect(4),
-                ),
-                _SidebarItem(
-                  icon: Icons.tune_outlined,
-                  selectedIcon: Icons.tune_rounded,
-                  label: 'Operations',
-                  selected: selectedIndex == 5,
-                  onTap: () => onSelect(5),
-                ),
-                _SidebarItem(
-                  icon: Icons.group_outlined,
-                  selectedIcon: Icons.group_rounded,
-                  label: 'Users & access',
-                  selected: selectedIndex == 6,
-                  onTap: () => onSelect(6),
-                ),
-              ],
-              const Spacer(),
-              _SidebarItem(
-                icon: Icons.more_horiz_rounded,
-                selectedIcon: Icons.more_horiz_rounded,
-                label: 'More',
                 selected: false,
                 onTap: onMore,
               ),
               const SizedBox(height: AppSpacing.xs),
-              _ConnectionFooter(),
+              const _ConnectionFooter(),
             ],
           ),
         ),
@@ -267,18 +280,117 @@ class _DesktopSidebar extends StatelessWidget {
   }
 }
 
-class _SidebarItem extends StatelessWidget {
-  const _SidebarItem({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
+class _WebDrawer extends StatelessWidget {
+  const _WebDrawer({
+    required this.installerMode,
+    required this.destinations,
+    required this.selectedIndex,
+    required this.onSelect,
+    required this.onMore,
+  });
+
+  final bool installerMode;
+  final List<_ShellDestination> destinations;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _BrandHeader(installerMode: installerMode),
+              const SizedBox(height: AppSpacing.lg),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (var index = 0; index < destinations.length; index++) ...[
+                      if (destinations[index].group != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 18, 10, 8),
+                          child: Text(
+                            destinations[index].group!,
+                            style: AppTextStyles.caption,
+                          ),
+                        ),
+                      _NavItem(
+                        destination: destinations[index],
+                        selected: selectedIndex == index,
+                        onTap: () => onSelect(index),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              _NavItem(
+                destination: const _ShellDestination(
+                  label: 'More',
+                  icon: Icons.more_horiz_rounded,
+                  selectedIcon: Icons.more_horiz_rounded,
+                ),
+                selected: false,
+                onTap: onMore,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader({required this.installerMode});
+
+  final bool installerMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Kilowatts', style: AppTextStyles.label),
+                Text(
+                  installerMode ? 'Installer workspace' : 'Energy manager',
+                  style: AppTextStyles.caption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.destination,
     required this.selected,
     required this.onTap,
   });
 
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
+  final _ShellDestination destination;
   final bool selected;
   final VoidCallback onTap;
 
@@ -297,7 +409,7 @@ class _SidebarItem extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  selected ? selectedIcon : icon,
+                  selected ? destination.selectedIcon : destination.icon,
                   size: 20,
                   color: selected
                       ? AppColors.textPrimary
@@ -306,7 +418,7 @@ class _SidebarItem extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
-                    label,
+                    destination.label,
                     style: AppTextStyles.body.copyWith(
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
@@ -322,6 +434,8 @@ class _SidebarItem extends StatelessWidget {
 }
 
 class _ConnectionFooter extends StatelessWidget {
+  const _ConnectionFooter();
+
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
