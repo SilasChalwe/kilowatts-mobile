@@ -6,9 +6,6 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../auth/data/access_control_service.dart';
 
-/// Installer-only account administration. The screen separates homeowner
-/// assignments from installer/admin accounts so installation ownership is
-/// obvious at a glance.
 class InstallerUsersScreen extends StatefulWidget {
   const InstallerUsersScreen({super.key});
 
@@ -17,100 +14,53 @@ class InstallerUsersScreen extends StatefulWidget {
 }
 
 class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _email = TextEditingController();
-  final _installationId = TextEditingController();
-  String _role = 'homeowner';
-  bool _saving = false;
-  String? _error;
-  bool _editing = false;
-
-  @override
-  void dispose() {
-    _email.dispose();
-    _installationId.dispose();
-    super.dispose();
-  }
-
-  void _edit(KilowattsUserAccess user) {
-    setState(() {
-      _email.text = user.email;
-      _role = user.role == KilowattsRole.installer ? 'installer' : 'homeowner';
-      _installationId.text = user.installationId ?? '';
-      _error = null;
-      _editing = true;
-    });
-  }
-
-  void _clearForm() {
-    setState(() {
-      _email.clear();
-      _installationId.clear();
-      _role = 'homeowner';
-      _error = null;
-      _editing = false;
-    });
-  }
-
-  Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+  Future<void> _openEditor([KilowattsUserAccess? existing]) async {
+    final result = await showDialog<_AccessDraft>(
+      context: context,
+      builder: (_) => _AccessEditorDialog(existing: existing),
+    );
+    if (result == null || !mounted) return;
 
     try {
       await AppStateScope.of(context).assignRole(
-        email: _email.text.trim(),
-        role: _role,
-        installationId: _role == 'homeowner'
-            ? _installationId.text.trim()
-            : null,
+        email: result.email,
+        role: result.role,
+        installationId: result.installationId,
       );
       if (!mounted) return;
-      final savedEmail = _email.text.trim();
-      setState(() => _saving = false);
-      _clearForm();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Access updated for $savedEmail.')),
+        SnackBar(content: Text('Access saved for ${result.email}.')),
       );
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = error is ArgumentError
-            ? error.message?.toString()
-            : 'Could not update this account. Check your installer access and connection.';
-      });
+      final message = error is ArgumentError
+          ? error.message?.toString() ?? 'Invalid access configuration.'
+          : 'Could not save access.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     }
   }
 
   Future<void> _revoke(KilowattsUserAccess user) async {
-    final currentEmail = AppStateScope.of(context).currentUser?.email?.toLowerCase();
-    if (user.email.toLowerCase() == currentEmail) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You cannot revoke the installer account you are using.'),
-        ),
-      );
-      return;
-    }
+    final currentEmail =
+        AppStateScope.of(context).currentUser?.email?.toLowerCase();
+    if (user.email.toLowerCase() == currentEmail) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Revoke system access?'),
-        content: Text(
-          '${user.email} will no longer be able to enter the Kilowatts system after this access record is removed.',
-        ),
+        title: const Text('Revoke access?'),
+        content: Text(user.email),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Revoke access'),
+            child: const Text('Revoke'),
           ),
         ],
       ),
@@ -126,7 +76,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not revoke this account.')),
+        const SnackBar(content: Text('Could not revoke access.')),
       );
     }
   }
@@ -134,13 +84,34 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Users & access')),
+      appBar: AppBar(
+        title: const Text('Users & access'),
+        actions: [
+          FilledButton.icon(
+            onPressed: _openEditor,
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+            label: const Text('Add user'),
+          ),
+          const SizedBox(width: AppSpacing.md),
+        ],
+      ),
       body: SafeArea(
         child: StreamBuilder<List<KilowattsUserAccess>>(
           stream: appState.watchAccessUsers(),
           builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return const _StatePanel(
+                icon: Icons.cloud_off_outlined,
+                title: 'Users unavailable',
+                message: 'Check Firestore access and connectivity.',
+              );
+            }
+
             final users = snapshot.data ?? const <KilowattsUserAccess>[];
             final homeowners = users
                 .where((user) => user.role == KilowattsRole.homeowner)
@@ -152,13 +123,6 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
             return ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
               children: [
-                const Text('Access management', style: AppTextStyles.display),
-                const SizedBox(height: AppSpacing.xs),
-                const Text(
-                  'Homeowners control one installation. Installers inherit homeowner controls and can also commission hardware, change system policy and manage access.',
-                  style: AppTextStyles.subtitle,
-                ),
-                const SizedBox(height: AppSpacing.md),
                 Wrap(
                   spacing: AppSpacing.sm,
                   runSpacing: AppSpacing.sm,
@@ -175,62 +139,27 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
                     ),
                     _CountCard(
                       icon: Icons.people_outline,
-                      label: 'Total access',
+                      label: 'Total',
                       value: users.length,
                     ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                _accessForm(),
-                if (_error != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      _error!,
-                      style: AppTextStyles.caption.copyWith(color: AppColors.error),
-                    ),
-                  ),
-                ],
+                _UserSection(
+                  title: 'Homeowners',
+                  users: homeowners,
+                  currentEmail: appState.currentUser?.email,
+                  onEdit: _openEditor,
+                  onRevoke: _revoke,
+                ),
                 const SizedBox(height: AppSpacing.lg),
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    !snapshot.hasData)
-                  const Center(child: CircularProgressIndicator())
-                else if (snapshot.hasError)
-                  const _MessagePanel(
-                    icon: Icons.cloud_off_outlined,
-                    title: 'Could not load users',
-                    message: 'Verify Firestore installer permissions and connectivity.',
-                  )
-                else if (users.isEmpty)
-                  const _MessagePanel(
-                    icon: Icons.person_add_alt_1_outlined,
-                    title: 'No assigned users yet',
-                    message: 'Use the access form above to add the first homeowner or installer.',
-                  )
-                else ...[
-                  _UserSection(
-                    title: 'Homeowners',
-                    subtitle: 'Every homeowner must be tied to an installation.',
-                    users: homeowners,
-                    currentEmail: appState.currentUser?.email,
-                    onEdit: _edit,
-                    onRevoke: _revoke,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  _UserSection(
-                    title: 'Installers / administrators',
-                    subtitle: 'These accounts can configure hardware and manage access.',
-                    users: installers,
-                    currentEmail: appState.currentUser?.email,
-                    onEdit: _edit,
-                    onRevoke: _revoke,
-                  ),
-                ],
+                _UserSection(
+                  title: 'Installers / administrators',
+                  users: installers,
+                  currentEmail: appState.currentUser?.email,
+                  onEdit: _openEditor,
+                  onRevoke: _revoke,
+                ),
               ],
             );
           },
@@ -238,126 +167,135 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       ),
     );
   }
+}
 
-  Widget _accessForm() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(16),
+class _AccessDraft {
+  const _AccessDraft({
+    required this.email,
+    required this.role,
+    this.installationId,
+  });
+
+  final String email;
+  final String role;
+  final String? installationId;
+}
+
+class _AccessEditorDialog extends StatefulWidget {
+  const _AccessEditorDialog({this.existing});
+
+  final KilowattsUserAccess? existing;
+
+  @override
+  State<_AccessEditorDialog> createState() => _AccessEditorDialogState();
+}
+
+class _AccessEditorDialogState extends State<_AccessEditorDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _email;
+  late final TextEditingController _installation;
+  late String _role;
+
+  @override
+  void initState() {
+    super.initState();
+    _email = TextEditingController(text: widget.existing?.email ?? '');
+    _installation = TextEditingController(
+      text: widget.existing?.installationId ?? '',
+    );
+    _role = widget.existing?.role == KilowattsRole.installer
+        ? 'installer'
+        : 'homeowner';
+  }
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _installation.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.of(context).pop(
+      _AccessDraft(
+        email: _email.text.trim(),
+        role: _role,
+        installationId: _role == 'homeowner'
+            ? _installation.text.trim()
+            : null,
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _editing ? 'Edit account access' : 'Add account access',
-                    style: AppTextStyles.title,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add user' : 'Edit access'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _email,
+                enabled: widget.existing == null,
+                decoration: const InputDecoration(labelText: 'Account email'),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  final email = value?.trim() ?? '';
+                  return email.contains('@') ? null : 'Enter a valid email.';
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+              DropdownButtonFormField<String>(
+                initialValue: _role,
+                decoration: const InputDecoration(labelText: 'Role'),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'homeowner',
+                    child: Text('Homeowner'),
                   ),
-                ),
-                if (_editing)
-                  TextButton.icon(
-                    onPressed: _saving ? null : _clearForm,
-                    icon: const Icon(Icons.close, size: 18),
-                    label: const Text('Cancel edit'),
+                  DropdownMenuItem(
+                    value: 'installer',
+                    child: Text('Installer / Admin'),
                   ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              _role == 'homeowner'
-                  ? 'Assign a homeowner to the installation they are allowed to control.'
-                  : 'Installer access includes all homeowner controls plus administration.',
-              style: AppTextStyles.caption,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Wrap(
-              spacing: AppSpacing.md,
-              runSpacing: AppSpacing.sm,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              children: [
-                SizedBox(
-                  width: 300,
-                  child: TextFormField(
-                    controller: _email,
-                    enabled: !_saving,
-                    decoration: const InputDecoration(labelText: 'Account email'),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      final email = value?.trim() ?? '';
-                      return email.contains('@')
-                          ? null
-                          : 'Enter a valid email address.';
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 200,
-                  child: DropdownButtonFormField<String>(
-                    value: _role,
-                    decoration: const InputDecoration(labelText: 'Role'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'homeowner',
-                        child: Text('Homeowner'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'installer',
-                        child: Text('Installer / Admin'),
-                      ),
-                    ],
-                    onChanged: _saving
-                        ? null
-                        : (value) => setState(() => _role = value!),
-                  ),
-                ),
-                if (_role == 'homeowner')
-                  SizedBox(
-                    width: 220,
-                    child: TextFormField(
-                      controller: _installationId,
-                      enabled: !_saving,
-                      decoration: const InputDecoration(
-                        labelText: 'Installation ID',
-                        hintText: 'home-42',
-                      ),
-                      validator: (value) =>
-                          (value?.trim().isEmpty ?? true)
-                              ? 'Required for homeowners.'
-                              : null,
-                    ),
-                  ),
-                FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(_editing ? Icons.save_outlined : Icons.person_add_alt_1_outlined),
-                  label: Text(_saving
-                      ? 'Saving…'
-                      : _editing
-                          ? 'Save changes'
-                          : 'Grant access'),
+                ],
+                onChanged: (value) => setState(() => _role = value!),
+              ),
+              if (_role == 'homeowner') ...[
+                const SizedBox(height: AppSpacing.md),
+                TextFormField(
+                  controller: _installation,
+                  decoration: const InputDecoration(labelText: 'Installation ID'),
+                  validator: (value) => value?.trim().isNotEmpty == true
+                      ? null
+                      : 'Installation ID is required.',
                 ),
               ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
     );
   }
 }
 
 class _CountCard extends StatelessWidget {
-  const _CountCard({required this.icon, required this.label, required this.value});
+  const _CountCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   final IconData icon;
   final String label;
@@ -366,7 +304,7 @@ class _CountCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 170,
+      width: 165,
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -393,7 +331,6 @@ class _CountCard extends StatelessWidget {
 class _UserSection extends StatelessWidget {
   const _UserSection({
     required this.title,
-    required this.subtitle,
     required this.users,
     required this.currentEmail,
     required this.onEdit,
@@ -401,7 +338,6 @@ class _UserSection extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
   final List<KilowattsUserAccess> users;
   final String? currentEmail;
   final ValueChanged<KilowattsUserAccess> onEdit;
@@ -413,8 +349,6 @@ class _UserSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: AppTextStyles.title),
-        const SizedBox(height: 2),
-        Text(subtitle, style: AppTextStyles.caption),
         const SizedBox(height: AppSpacing.sm),
         if (users.isEmpty)
           Container(
@@ -424,17 +358,18 @@ class _UserSection extends StatelessWidget {
               color: AppColors.surfaceMuted,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text('None assigned.', style: AppTextStyles.caption),
+            child: const Text('None assigned.'),
           )
         else
           ...users.map((user) {
-            final isCurrent = user.email.toLowerCase() == currentEmail?.toLowerCase();
+            final isCurrent =
+                user.email.toLowerCase() == currentEmail?.toLowerCase();
             return Container(
               margin: const EdgeInsets.only(bottom: AppSpacing.xs),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: ListTile(
                 leading: CircleAvatar(
@@ -451,37 +386,33 @@ class _UserSection extends StatelessWidget {
                     Flexible(child: Text(user.email)),
                     if (isCurrent) ...[
                       const SizedBox(width: AppSpacing.xs),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.info.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'You',
-                          style: AppTextStyles.caption.copyWith(color: AppColors.info),
-                        ),
-                      ),
+                      const _YouBadge(),
                     ],
                   ],
                 ),
                 subtitle: Text(
                   user.role == KilowattsRole.homeowner
-                      ? 'Homeowner · ${user.installationId ?? 'No installation'}'
+                      ? user.installationId ?? 'No installation'
                       : 'Installer / Administrator',
                 ),
-                trailing: Wrap(
-                  spacing: AppSpacing.xs,
-                  children: [
-                    IconButton(
-                      tooltip: 'Edit access',
-                      onPressed: () => onEdit(user),
-                      icon: const Icon(Icons.edit_outlined),
+                trailing: PopupMenuButton<_UserAction>(
+                  onSelected: (action) {
+                    if (action == _UserAction.edit) onEdit(user);
+                    if (action == _UserAction.revoke && !isCurrent) {
+                      onRevoke(user);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: _UserAction.edit,
+                      child: Text('Edit access'),
                     ),
-                    IconButton(
-                      tooltip: isCurrent ? 'Current account cannot be revoked' : 'Revoke access',
-                      onPressed: isCurrent ? null : () => onRevoke(user),
-                      icon: const Icon(Icons.person_remove_outlined),
+                    PopupMenuItem(
+                      value: _UserAction.revoke,
+                      enabled: !isCurrent,
+                      child: Text(
+                        isCurrent ? 'Current account' : 'Revoke access',
+                      ),
                     ),
                   ],
                 ),
@@ -493,8 +424,29 @@ class _UserSection extends StatelessWidget {
   }
 }
 
-class _MessagePanel extends StatelessWidget {
-  const _MessagePanel({
+enum _UserAction { edit, revoke }
+
+class _YouBadge extends StatelessWidget {
+  const _YouBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.info.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'You',
+        style: AppTextStyles.caption.copyWith(color: AppColors.info),
+      ),
+    );
+  }
+}
+
+class _StatePanel extends StatelessWidget {
+  const _StatePanel({
     required this.icon,
     required this.title,
     required this.message,
@@ -506,21 +458,19 @@ class _MessagePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 36, color: AppColors.textSecondary),
-          const SizedBox(height: AppSpacing.sm),
-          Text(title, style: AppTextStyles.label),
-          const SizedBox(height: 3),
-          Text(message, textAlign: TextAlign.center, style: AppTextStyles.caption),
-        ],
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 42, color: AppColors.textSecondary),
+            const SizedBox(height: AppSpacing.sm),
+            Text(title, style: AppTextStyles.title),
+            const SizedBox(height: AppSpacing.xs),
+            Text(message, style: AppTextStyles.caption),
+          ],
+        ),
       ),
     );
   }
