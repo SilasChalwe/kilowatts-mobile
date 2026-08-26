@@ -306,8 +306,14 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
             const SizedBox(height: AppSpacing.xl),
             Row(
               children: [
-                const Expanded(
-                  child: Text('Nodes & loads', style: AppTextStyles.title),
+                Expanded(
+                  child: Text(
+                    'Nodes & loads',
+                    style: AppTextStyles.body.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 Text(
                   '${nodes.length} nodes · ${loads.length} loads',
@@ -387,11 +393,15 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      final loading = const Center(child: CircularProgressIndicator());
       if (widget.embedded) {
-        return const Material(color: Colors.transparent, child: loading);
+        return const Material(
+          color: Colors.transparent,
+          child: Center(child: CircularProgressIndicator()),
+        );
       }
-      return const Scaffold(body: loading);
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     if (widget.embedded) {
