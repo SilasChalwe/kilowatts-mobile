@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/metric_card.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../loads/models/load_model.dart';
 import '../../system/models/topology_model.dart';
 
@@ -13,25 +13,22 @@ class LoadSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeLoads = loads.where((l) => l.displayState == true).length;
-    final onlineNodes = topology.smartNodes.where((n) => n.online).length;
+    final activeLoads = loads.where((load) => load.displayState == true).length;
+    final onlineNodes = topology.smartNodes.where((node) => node.online).length;
 
-    return Row(
+    return ResponsiveCardGrid(
+      minCardWidth: 165,
+      maxColumns: 2,
       children: [
-        Expanded(
-          child: MetricCard(
-            label: 'Loads On',
-            value: '$activeLoads',
-            icon: Icons.flash_on_outlined,
-          ),
+        MetricCard(
+          label: 'Loads on',
+          value: '$activeLoads',
+          icon: Icons.flash_on_outlined,
         ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: MetricCard(
-            label: 'Nodes Online',
-            value: '$onlineNodes/${topology.smartNodes.length}',
-            icon: Icons.developer_board_outlined,
-          ),
+        MetricCard(
+          label: 'Smart nodes online',
+          value: '$onlineNodes/${topology.smartNodes.length}',
+          icon: Icons.developer_board_outlined,
         ),
       ],
     );
