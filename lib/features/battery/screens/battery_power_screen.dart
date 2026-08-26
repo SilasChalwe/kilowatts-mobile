@@ -3,59 +3,87 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/error_state.dart';
+import '../../../core/widgets/page_header.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/trend_chart_card.dart';
 import '../../system/models/system_state_model.dart';
 import '../widgets/power_budget_card.dart';
 import '../widgets/soc_indicator.dart';
 
 /// The power trend chart is built from samples observed during this app
-/// session only (accumulated centrally in [AppState.batteryPowerSamples],
-/// not by this screen) — there is no historical-data topic/API yet, so
-/// nothing before the app was opened is shown.
+/// session only. Nothing before the app was opened is invented or backfilled.
 class BatteryPowerScreen extends StatelessWidget {
-  const BatteryPowerScreen({super.key});
+  const BatteryPowerScreen({super.key, this.embedded = false});
+
+  final bool embedded;
+
+  Widget _content(BuildContext context) {
+    final appState = AppStateScope.of(context);
+
+    return ValueListenableBuilder<SystemStateModel?>(
+      valueListenable: appState.systemState,
+      builder: (context, state, _) {
+        if (state == null) {
+          return ErrorState(
+            title: 'Battery telemetry unavailable',
+            message:
+                'Central has not published battery data yet. Check the connection and battery monitor.',
+            onRetry: appState.connectMqtt,
+          );
+        }
+
+        return ValueListenableBuilder<List<double>>(
+          valueListenable: appState.batteryPowerSamples,
+          builder: (context, powerSamples, _) {
+            return SingleChildScrollView(
+              child: ResponsiveContent(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (embedded) ...[
+                      const PageHeader(
+                        title: 'Battery & power',
+                        subtitle:
+                            'Live state of charge, available power and battery demand.',
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                    ],
+                    ResponsiveCardGrid(
+                      minCardWidth: 360,
+                      maxColumns: 2,
+                      children: [
+                        SocIndicator(state: state),
+                        PowerBudgetCard(state: state),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    TrendChartCard(
+                      title: 'Battery power · this session',
+                      values: powerSamples,
+                      caption: 'Most recent battery power readings in watts',
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final appState = AppStateScope.of(context);
+    if (embedded) {
+      return Material(
+        color: Colors.transparent,
+        child: SafeArea(child: _content(context)),
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Battery & Power')),
-      body: SafeArea(
-        child: ValueListenableBuilder<SystemStateModel?>(
-          valueListenable: appState.systemState,
-          builder: (context, state, _) {
-            if (state == null) {
-              return ErrorState(
-                title: 'No Battery Data Yet',
-                message:
-                    'Central has not reported battery telemetry yet. Check that it is powered on and connected.',
-                onRetry: appState.connectMqtt,
-              );
-            }
-
-            return ValueListenableBuilder<List<double>>(
-              valueListenable: appState.batteryPowerSamples,
-              builder: (context, powerSamples, _) {
-                return ListView(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  children: [
-                    SocIndicator(state: state),
-                    const SizedBox(height: AppSpacing.md),
-                    PowerBudgetCard(state: state),
-                    const SizedBox(height: AppSpacing.md),
-                    TrendChartCard(
-                      title: 'Power Trend (This Session)',
-                      values: powerSamples,
-                      caption: 'Battery power (W), most recent readings',
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
-      ),
+      appBar: AppBar(title: const Text('Battery & power')),
+      body: SafeArea(child: _content(context)),
     );
   }
 }
