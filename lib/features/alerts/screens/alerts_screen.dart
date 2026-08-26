@@ -37,10 +37,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }
   }
 
-  int _count(List<AlertModel> alerts, AlertSeverity severity) {
-    return alerts.where((alert) => alert.severity == severity).length;
-  }
-
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
@@ -50,8 +46,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
         valueListenable: appState.alerts,
         builder: (context, alerts, _) {
           final filtered = _apply(alerts);
-          final critical = _count(alerts, AlertSeverity.critical);
-          final warning = _count(alerts, AlertSeverity.warning);
 
           return ListView(
             children: [
@@ -62,9 +56,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   children: [
                     PageHeader(
                       title: 'Alerts',
-                      subtitle: alerts.isEmpty
-                          ? 'No system events currently require review.'
-                          : '${alerts.length} received · $critical critical · $warning warning',
                       actions: [
                         if (alerts.isNotEmpty)
                           OutlinedButton.icon(
@@ -100,8 +91,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             ? 'All clear'
                             : 'No alerts in this category',
                         message: alerts.isEmpty
-                            ? 'New system alerts will appear here as they are received.'
-                            : 'Choose another severity filter to review other events.',
+                            ? null
+                            : 'Choose another severity filter.',
                       )
                     else
                       Column(
