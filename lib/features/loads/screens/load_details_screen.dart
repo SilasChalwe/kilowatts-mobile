@@ -24,31 +24,34 @@ class LoadDetailsScreen extends StatefulWidget {
 }
 
 class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
-  late LoadMode _mode = widget.load.mode;
-  late int _priority = widget.load.priority;
-  late LoadSchedule _schedule = widget.load.schedule;
   bool _isSaving = false;
   String? _saveMessage;
   bool _saveFailed = false;
 
-  Future<void> _saveConfiguration() async {
+  Future<void> _editConfiguration(LoadModel load) async {
+    final draft = await showDialog<_LoadConfigDraft>(
+      context: context,
+      builder: (_) => _LoadConfigurationDialog(load: load),
+    );
+    if (draft == null || !mounted) return;
+
     setState(() {
       _isSaving = true;
       _saveMessage = 'Sending configuration to Central…';
       _saveFailed = false;
     });
 
-    final effectiveSchedule = _mode == LoadMode.fixed
+    final effectiveSchedule = draft.mode == LoadMode.fixed
         ? LoadSchedule.disabled
-        : _schedule;
+        : draft.schedule;
 
     final outcome = await AppStateScope.of(context).updateLoadConfiguration(
-      nodeMac: widget.load.owningNodeMac,
-      relayPin: widget.load.relayPin,
-      mode: _mode,
+      nodeMac: load.owningNodeMac,
+      relayPin: load.relayPin,
+      mode: draft.mode,
       currentRequestedState:
-          widget.load.requestedState ?? widget.load.confirmedState ?? false,
-      priority: _priority,
+          load.requestedState ?? load.confirmedState ?? false,
+      priority: draft.priority,
       schedule: effectiveSchedule,
     );
 
@@ -59,9 +62,6 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
       _saveMessage = outcome.status == CommandStatus.confirmed
           ? 'Configuration confirmed by Central.'
           : outcome.message ?? 'Central rejected this configuration.';
-      if (!_saveFailed && _mode == LoadMode.fixed) {
-        _schedule = LoadSchedule.disabled;
-      }
     });
   }
 
@@ -148,12 +148,47 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     );
   }
 
-  Widget _planningData(LoadModel load) {
-    final schedule = load.schedule.enabled
-        ? '${Formatters.timeOfDay(load.schedule.startHour ?? 0, load.schedule.startMinute ?? 0)} – ${Formatters.timeOfDay(load.schedule.endHour ?? 0, load.schedule.endMinute ?? 0)}'
-        : 'Not scheduled';
+  String _scheduleText(LoadSchedule schedule) {
+    if (!schedule.enabled) return 'Not scheduled';
+    return '${Formatters.timeOfDay(schedule.startHour ?? 0, schedule.startMinute ?? 0)} – ${Formatters.timeOfDay(schedule.endHour ?? 0, schedule.endMinute ?? 0)}';
+  }
+
+  Widget _planningCard(LoadModel load) {
     return SectionCard(
-      title: 'Current planning data',
+      title: 'Planning configuration',
+      child: Column(
+        children: [
+          SectionRow(
+            label: 'Mode',
+            value: load.mode == LoadMode.auto ? 'Automatic' : 'Fixed',
+          ),
+          SectionRow(label: 'Priority', value: '${load.priority}/10'),
+          SectionRow(label: 'Schedule', value: _scheduleText(load.schedule)),
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: _isSaving ? null : () => _editConfiguration(load),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: Text(_isSaving ? 'Applying…' : 'Edit configuration'),
+            ),
+          ),
+          if (_saveMessage != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _SaveFeedback(
+              message: _saveMessage!,
+              failed: _saveFailed,
+              pending: _isSaving,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _planningData(LoadModel load) {
+    return SectionCard(
+      title: 'Planning data',
       child: Column(
         children: [
           SectionRow(
@@ -161,12 +196,6 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
             value: Formatters.power(load.plannedPowerW),
           ),
           SectionRow(label: 'Relay channel', value: 'GPIO ${load.relayPin}'),
-          SectionRow(label: 'Priority', value: '${load.priority}/10'),
-          SectionRow(
-            label: 'Mode',
-            value: load.mode == LoadMode.auto ? 'Automatic' : 'Fixed',
-          ),
-          SectionRow(label: 'Schedule', value: schedule),
           SectionRow(
             label: 'Last update',
             value: Formatters.relativeTime(load.lastUpdated),
@@ -179,98 +208,6 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
               style: AppTextStyles.caption,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _configurationCard() {
-    return SectionCard(
-      title: 'Planning configuration',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Mode', style: AppTextStyles.label),
-          const SizedBox(height: AppSpacing.xs),
-          LoadModeSelector(
-            value: _mode,
-            onChanged: (value) {
-              setState(() {
-                _mode = value;
-                _saveMessage = null;
-              });
-            },
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Priority', style: AppTextStyles.label),
-              ),
-              Text('$_priority/10', style: AppTextStyles.caption),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          PrioritySelector(
-            value: _priority,
-            onChanged: (value) {
-              setState(() {
-                _priority = value;
-                _saveMessage = null;
-              });
-            },
-          ),
-          if (_mode == LoadMode.auto) ...[
-            const SizedBox(height: AppSpacing.md),
-            const Text('Preferred schedule', style: AppTextStyles.label),
-            const SizedBox(height: AppSpacing.xs),
-            ScheduleEditor(
-              schedule: _schedule,
-              onChanged: (schedule) {
-                setState(() {
-                  _schedule = schedule;
-                  _saveMessage = null;
-                });
-              },
-            ),
-          ] else ...[
-            const SizedBox(height: AppSpacing.md),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                'Fixed mode follows the manual ON/OFF request. Scheduling is available in Automatic mode.',
-                style: AppTextStyles.caption,
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.lg),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: _isSaving ? null : _saveConfiguration,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.check_rounded, size: 18),
-              label: Text(_isSaving ? 'Applying…' : 'Apply changes'),
-            ),
-          ),
-          if (_saveMessage != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            _SaveFeedback(
-              message: _saveMessage!,
-              failed: _saveFailed,
-              pending: _isSaving,
-            ),
-          ],
         ],
       ),
     );
@@ -316,7 +253,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                             ],
                           ),
                         ),
-                        SizedBox(width: width, child: _configurationCard()),
+                        SizedBox(width: width, child: _planningCard(load)),
                       ],
                     );
                   },
@@ -326,6 +263,117 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _LoadConfigDraft {
+  const _LoadConfigDraft({
+    required this.mode,
+    required this.priority,
+    required this.schedule,
+  });
+
+  final LoadMode mode;
+  final int priority;
+  final LoadSchedule schedule;
+}
+
+class _LoadConfigurationDialog extends StatefulWidget {
+  const _LoadConfigurationDialog({required this.load});
+
+  final LoadModel load;
+
+  @override
+  State<_LoadConfigurationDialog> createState() =>
+      _LoadConfigurationDialogState();
+}
+
+class _LoadConfigurationDialogState extends State<_LoadConfigurationDialog> {
+  late LoadMode _mode = widget.load.mode;
+  late int _priority = widget.load.priority;
+  late LoadSchedule _schedule = widget.load.schedule;
+
+  void _save() {
+    Navigator.of(context).pop(
+      _LoadConfigDraft(
+        mode: _mode,
+        priority: _priority,
+        schedule: _mode == LoadMode.fixed ? LoadSchedule.disabled : _schedule,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit planning configuration'),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Mode', style: AppTextStyles.label),
+              const SizedBox(height: AppSpacing.xs),
+              LoadModeSelector(
+                value: _mode,
+                onChanged: (value) => setState(() => _mode = value),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Priority', style: AppTextStyles.label),
+                  ),
+                  Text('$_priority/10', style: AppTextStyles.caption),
+                ],
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                'Higher priority loads are preferred when available power is limited.',
+                style: AppTextStyles.caption,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              PrioritySelector(
+                value: _priority,
+                onChanged: (value) => setState(() => _priority = value),
+              ),
+              if (_mode == LoadMode.auto) ...[
+                const SizedBox(height: AppSpacing.md),
+                const Text('Preferred schedule', style: AppTextStyles.label),
+                const SizedBox(height: AppSpacing.xs),
+                ScheduleEditor(
+                  schedule: _schedule,
+                  onChanged: (schedule) => setState(() => _schedule = schedule),
+                ),
+              ] else ...[
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'Fixed mode follows the manual ON/OFF request. Scheduling is available in Automatic mode.',
+                    style: AppTextStyles.caption,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Save changes')),
+      ],
     );
   }
 }
