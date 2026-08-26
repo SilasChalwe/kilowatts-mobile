@@ -7,7 +7,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_text_field.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -50,15 +49,56 @@ class _SystemConnectionSettingsScreenState
     if (updated == null || !mounted) return;
 
     setState(() => _saving = true);
-    await AppStateScope.of(context).saveMqttConfig(updated);
+    final appState = AppStateScope.of(context);
+    await appState.saveMqttConfig(updated);
     if (!mounted) return;
+
+    final status = appState.connectionStatus.value;
     setState(() {
       _config = updated;
       _saving = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Connection saved.')),
-    );
+
+    final (message, success) = switch (status) {
+      MqttConnectionStatus.connected =>
+        ('Connection saved and connected successfully.', true),
+      MqttConnectionStatus.authenticationFailure =>
+        ('Connection saved, but authentication failed.', false),
+      MqttConnectionStatus.tlsFailure =>
+        ('Connection saved, but the TLS connection failed.', false),
+      MqttConnectionStatus.networkFailure =>
+        ('Connection saved, but the broker could not be reached.', false),
+      MqttConnectionStatus.reconnecting =>
+        ('Connection saved. Reconnecting to the broker…', false),
+      MqttConnectionStatus.connecting =>
+        ('Connection saved. Connecting to the broker…', false),
+      MqttConnectionStatus.notConfigured =>
+        ('Connection details are incomplete.', false),
+      MqttConnectionStatus.disconnected =>
+        ('Connection saved, but the system is offline.', false),
+    };
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                success
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.info_outline_rounded,
+                color: Colors.white,
+                size: 19,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: success ? AppColors.success : AppColors.textPrimary,
+        ),
+      );
   }
 
   @override
@@ -76,21 +116,12 @@ class _SystemConnectionSettingsScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const PageHeader(
-                          title: 'System connection',
-                          subtitle:
-                              'Review the MQTT endpoint used by this device. Credentials remain stored locally.',
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
                         ValueListenableBuilder<MqttConnectionStatus>(
                           valueListenable: appState.connectionStatus,
                           builder: (context, status, _) {
                             final config = _config!;
                             return SectionCard(
                               title: 'MQTT broker',
-                              subtitle: config.isConfigured
-                                  ? 'Current saved connection.'
-                                  : 'No connection has been saved on this device.',
                               trailing: StatusBadge(
                                 label: _statusLabel(status),
                                 tone: _statusTone(status),
@@ -170,7 +201,7 @@ class _SystemConnectionSettingsScreenState
                               SizedBox(width: AppSpacing.sm),
                               Expanded(
                                 child: Text(
-                                  'Broker credentials are stored on this device and are not displayed after saving.',
+                                  'Credentials are stored on this device and the saved password is never shown.',
                                   style: AppTextStyles.caption,
                                 ),
                               ),
@@ -381,12 +412,38 @@ class _ConnectionEditorDialogState extends State<_ConnectionEditorDialog> {
                   const SizedBox(height: AppSpacing.md),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      _testMessage!,
-                      style: AppTextStyles.caption.copyWith(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
                         color: _testSucceeded
-                            ? AppColors.success
-                            : AppColors.error,
+                            ? AppColors.successSoft
+                            : AppColors.errorSoft,
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _testSucceeded
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.error_outline_rounded,
+                            size: 18,
+                            color: _testSucceeded
+                                ? AppColors.success
+                                : AppColors.error,
+                          ),
+                          const SizedBox(width: AppSpacing.xs),
+                          Expanded(
+                            child: Text(
+                              _testMessage!,
+                              style: AppTextStyles.caption.copyWith(
+                                color: _testSucceeded
+                                    ? AppColors.success
+                                    : AppColors.error,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -412,7 +469,7 @@ class _ConnectionEditorDialogState extends State<_ConnectionEditorDialog> {
                   final config = _read();
                   if (config != null) Navigator.of(context).pop(config);
                 },
-          child: const Text('Save changes'),
+          child: const Text('Save'),
         ),
       ],
     );
