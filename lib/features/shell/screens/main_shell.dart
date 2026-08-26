@@ -10,8 +10,11 @@ import '../../admin/screens/installer_console_screen.dart';
 import '../../admin/screens/installer_operations_screen.dart';
 import '../../admin/screens/installer_users_screen.dart';
 import '../../alerts/screens/alerts_screen.dart';
+import '../../battery/screens/battery_power_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
+import '../../history/screens/history_screen.dart';
 import '../../loads/screens/loads_screen.dart';
+import '../../settings/screens/settings_screen.dart';
 import '../../system/screens/system_topology_screen.dart';
 import '../widgets/app_bottom_navigation.dart';
 import 'more_screen.dart';
@@ -49,59 +52,82 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  List<_ShellDestination> _destinations() => [
-        const _ShellDestination(
+  List<_ShellPage> _webPages() => [
+        _ShellPage(
           label: 'Overview',
           icon: Icons.home_outlined,
           selectedIcon: Icons.home_rounded,
+          child: DashboardScreen(
+            onViewAllAlerts: () => setState(() => _currentIndex = 3),
+          ),
         ),
-        const _ShellDestination(
+        const _ShellPage(
           label: 'Loads',
           icon: Icons.bolt_outlined,
           selectedIcon: Icons.bolt_rounded,
+          child: LoadsScreen(),
         ),
-        const _ShellDestination(
+        const _ShellPage(
           label: 'System',
           icon: Icons.account_tree_outlined,
           selectedIcon: Icons.account_tree_rounded,
+          child: SystemTopologyScreen(embedded: true),
         ),
-        const _ShellDestination(
+        const _ShellPage(
           label: 'Alerts',
           icon: Icons.notifications_outlined,
           selectedIcon: Icons.notifications_rounded,
+          child: AlertsScreen(embedded: true),
+        ),
+        const _ShellPage(
+          label: 'Battery & power',
+          icon: Icons.battery_charging_full_outlined,
+          selectedIcon: Icons.battery_charging_full_rounded,
+          group: 'INSIGHTS',
+          child: BatteryPowerScreen(embedded: true),
+        ),
+        const _ShellPage(
+          label: 'History & reports',
+          icon: Icons.bar_chart_outlined,
+          selectedIcon: Icons.bar_chart_rounded,
+          child: HistoryScreen(embedded: true),
+        ),
+        const _ShellPage(
+          label: 'Settings',
+          icon: Icons.settings_outlined,
+          selectedIcon: Icons.settings_rounded,
+          child: SettingsScreen(embedded: true),
         ),
         if (widget.installerMode) ...[
-          const _ShellDestination(
+          const _ShellPage(
             label: 'Installer console',
             icon: Icons.build_outlined,
             selectedIcon: Icons.build_rounded,
             group: 'INSTALLATION',
+            child: InstallerConsoleScreen(embedded: true),
           ),
-          const _ShellDestination(
+          const _ShellPage(
             label: 'Operations',
             icon: Icons.tune_outlined,
             selectedIcon: Icons.tune_rounded,
+            child: InstallerOperationsScreen(embedded: true),
           ),
-          const _ShellDestination(
+          const _ShellPage(
             label: 'Users & access',
             icon: Icons.group_outlined,
             selectedIcon: Icons.group_rounded,
+            child: InstallerUsersScreen(embedded: true),
           ),
         ],
       ];
 
-  List<Widget> _pages() => [
+  List<Widget> _mobilePages() => [
         DashboardScreen(
           onViewAllAlerts: () => setState(() => _currentIndex = 3),
         ),
         const LoadsScreen(),
         const SystemTopologyScreen(embedded: true),
         const AlertsScreen(embedded: true),
-        if (widget.installerMode) ...[
-          const InstallerConsoleScreen(embedded: true),
-          const InstallerOperationsScreen(embedded: true),
-          const InstallerUsersScreen(embedded: true),
-        ],
       ];
 
   void _select(int index) => setState(() => _currentIndex = index);
@@ -124,11 +150,9 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = _pages();
-    final destinations = _destinations();
-    final effectiveIndex = _currentIndex < pages.length ? _currentIndex : 0;
-
     if (kIsWeb) {
+      final pages = _webPages();
+      final effectiveIndex = _currentIndex < pages.length ? _currentIndex : 0;
       return LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= _wideWebBreakpoint;
@@ -139,16 +163,15 @@ class _MainShellState extends State<MainShell> {
                   children: [
                     _WebSidebar(
                       installerMode: widget.installerMode,
-                      destinations: destinations,
+                      pages: pages,
                       selectedIndex: effectiveIndex,
                       onSelect: _select,
-                      onMore: _openMore,
                     ),
                     const VerticalDivider(width: 1, color: AppColors.border),
                     Expanded(
                       child: IndexedStack(
                         index: effectiveIndex,
-                        children: pages,
+                        children: pages.map((page) => page.child).toList(),
                       ),
                     ),
                   ],
@@ -158,79 +181,74 @@ class _MainShellState extends State<MainShell> {
           }
 
           return Scaffold(
-            appBar: AppBar(
-              title: Text(destinations[effectiveIndex].label),
-            ),
+            appBar: AppBar(title: Text(pages[effectiveIndex].label)),
             drawer: _WebDrawer(
               installerMode: widget.installerMode,
-              destinations: destinations,
+              pages: pages,
               selectedIndex: effectiveIndex,
               onSelect: (index) {
                 Navigator.of(context).pop();
                 _select(index);
               },
-              onMore: () {
-                Navigator.of(context).pop();
-                _openMore();
-              },
             ),
-            body: IndexedStack(index: effectiveIndex, children: pages),
+            body: IndexedStack(
+              index: effectiveIndex,
+              children: pages.map((page) => page.child).toList(),
+            ),
           );
         },
       );
     }
 
     // Native mobile: one navigation system only — the bottom bar.
-    final mobileIndex = effectiveIndex > 3 ? 0 : effectiveIndex;
+    final pages = _mobilePages();
+    final effectiveIndex = _currentIndex < 4 ? _currentIndex : 0;
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: mobileIndex,
-          children: pages.take(4).toList(growable: false),
-        ),
+        child: IndexedStack(index: effectiveIndex, children: pages),
       ),
       bottomNavigationBar: AppBottomNavigation(
-        currentIndex: mobileIndex,
+        currentIndex: effectiveIndex,
         onTap: _handleMobileDestination,
       ),
     );
   }
 }
 
-class _ShellDestination {
-  const _ShellDestination({
+class _ShellPage {
+  const _ShellPage({
     required this.label,
     required this.icon,
     required this.selectedIcon,
+    required this.child,
     this.group,
   });
 
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+  final Widget child;
   final String? group;
 }
 
 class _WebSidebar extends StatelessWidget {
   const _WebSidebar({
     required this.installerMode,
-    required this.destinations,
+    required this.pages,
     required this.selectedIndex,
     required this.onSelect,
-    required this.onMore,
   });
 
   final bool installerMode;
-  final List<_ShellDestination> destinations;
+  final List<_ShellPage> pages;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
-  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 248,
+      width: 252,
       child: ColoredBox(
         color: AppColors.surface,
         child: Padding(
@@ -243,32 +261,23 @@ class _WebSidebar extends StatelessWidget {
               Expanded(
                 child: ListView(
                   children: [
-                    for (var index = 0; index < destinations.length; index++) ...[
-                      if (destinations[index].group != null)
+                    for (var index = 0; index < pages.length; index++) ...[
+                      if (pages[index].group != null)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(10, 20, 10, 8),
                           child: Text(
-                            destinations[index].group!,
+                            pages[index].group!,
                             style: AppTextStyles.caption,
                           ),
                         ),
                       _NavItem(
-                        destination: destinations[index],
+                        page: pages[index],
                         selected: selectedIndex == index,
                         onTap: () => onSelect(index),
                       ),
                     ],
                   ],
                 ),
-              ),
-              _NavItem(
-                destination: const _ShellDestination(
-                  label: 'More',
-                  icon: Icons.more_horiz_rounded,
-                  selectedIcon: Icons.more_horiz_rounded,
-                ),
-                selected: false,
-                onTap: onMore,
               ),
               const SizedBox(height: AppSpacing.xs),
               const _ConnectionFooter(),
@@ -283,17 +292,15 @@ class _WebSidebar extends StatelessWidget {
 class _WebDrawer extends StatelessWidget {
   const _WebDrawer({
     required this.installerMode,
-    required this.destinations,
+    required this.pages,
     required this.selectedIndex,
     required this.onSelect,
-    required this.onMore,
   });
 
   final bool installerMode;
-  final List<_ShellDestination> destinations;
+  final List<_ShellPage> pages;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
-  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -309,32 +316,23 @@ class _WebDrawer extends StatelessWidget {
               Expanded(
                 child: ListView(
                   children: [
-                    for (var index = 0; index < destinations.length; index++) ...[
-                      if (destinations[index].group != null)
+                    for (var index = 0; index < pages.length; index++) ...[
+                      if (pages[index].group != null)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(10, 18, 10, 8),
                           child: Text(
-                            destinations[index].group!,
+                            pages[index].group!,
                             style: AppTextStyles.caption,
                           ),
                         ),
                       _NavItem(
-                        destination: destinations[index],
+                        page: pages[index],
                         selected: selectedIndex == index,
                         onTap: () => onSelect(index),
                       ),
                     ],
                   ],
                 ),
-              ),
-              _NavItem(
-                destination: const _ShellDestination(
-                  label: 'More',
-                  icon: Icons.more_horiz_rounded,
-                  selectedIcon: Icons.more_horiz_rounded,
-                ),
-                selected: false,
-                onTap: onMore,
               ),
             ],
           ),
@@ -385,12 +383,12 @@ class _BrandHeader extends StatelessWidget {
 
 class _NavItem extends StatelessWidget {
   const _NavItem({
-    required this.destination,
+    required this.page,
     required this.selected,
     required this.onTap,
   });
 
-  final _ShellDestination destination;
+  final _ShellPage page;
   final bool selected;
   final VoidCallback onTap;
 
@@ -409,7 +407,7 @@ class _NavItem extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  selected ? destination.selectedIcon : destination.icon,
+                  selected ? page.selectedIcon : page.icon,
                   size: 20,
                   color: selected
                       ? AppColors.textPrimary
@@ -418,7 +416,7 @@ class _NavItem extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
-                    destination.label,
+                    page.label,
                     style: AppTextStyles.body.copyWith(
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
