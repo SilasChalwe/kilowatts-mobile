@@ -24,14 +24,7 @@ export '../services/mqtt_service.dart' show MqttConnectionStatus;
 const _maxSessionSamples = 60;
 const _maxStoredAlerts = 100;
 
-/// The single shared application state. Screens are presentation
-/// components: they observe the [ValueListenable] slices here and dispatch
-/// user actions through this class's methods — they never create an MQTT
-/// client, decode a topic payload, hold broker credentials, or call
-/// FirebaseAuth directly.
-///
-/// One [MqttService] connection is owned here for the lifetime of the app;
-/// navigating between screens reuses it rather than reconnecting.
+/// Shared application state for both homeowner and installer experiences.
 class AppState {
   AppState({
     required this.authService,
@@ -51,7 +44,6 @@ class AppState {
   final AccessControlService _accessControlService;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
-  // ── Connection & system state ────────────────────────────────────────
   final ValueNotifier<MqttConnectionStatus> connectionStatus = ValueNotifier(
     MqttConnectionStatus.disconnected,
   );
@@ -64,9 +56,6 @@ class AppState {
     const [],
   );
 
-  // Session-only trend samples, derived from [systemState] so Battery and
-  // History screens share one accumulation instead of each sampling the
-  // stream independently.
   final ValueNotifier<List<double>> socSamples = ValueNotifier(const []);
   final ValueNotifier<List<double>> batteryPowerSamples = ValueNotifier(
     const [],
@@ -143,20 +132,16 @@ class AppState {
   Future<void> _persistAlerts() =>
       _localState.cacheAlerts(alerts.value.map((a) => a.toJson()).toList());
 
-  // ── MQTT connection actions ──────────────────────────────────────────
   Future<void> connectMqtt() => _mqtt.connect();
-
   MqttConfig get mqttConfig => _mqtt.currentConfig;
-
   Future<MqttConfig> loadMqttConfig() => _mqtt.loadMqttConfig();
-
   Future<MqttConnectionStatus> testMqttConnection(MqttConfig config) =>
       _mqtt.testConnection(config);
-
   Future<void> saveMqttConfig(MqttConfig config) =>
       _mqtt.saveAndConnect(config);
 
-  // ── Load / system commands ───────────────────────────────────────────
+  // Homeowner operations. Installer UI calls the same methods rather than
+  // creating a second control path.
   Future<CommandOutcome> setLoadFixedState({
     required String nodeMac,
     required int relayPin,
@@ -188,8 +173,30 @@ class AppState {
     );
   }
 
-  Future<CommandOutcome> applySafetyConfig(SafetyConfigDraft draft) =>
-      _mqtt.sendSafetyConfig(draft);
+  // Installer operations.
+  Future<CommandOutcome> applySafetyConfig(SafetyConfigDraft draft) {
+    InstallerNodeModel? central;
+    for (final node in installerNodes.value) {
+      if (node.isCentralNode) {
+        central = node;
+        break;
+      }
+    }
+    if (central == null || central.mac.isEmpty) {
+      return Future.value(
+        const CommandOutcome.failed(
+          'Central Node identity is not available yet. Wait for state/nodes.',
+        ),
+      );
+    }
+    return _mqtt.sendSafetyConfig(centralNodeMac: central.mac, draft: draft);
+  }
+
+  Future<CommandOutcome> requestOptimizationCycle() =>
+      _mqtt.requestOptimizationCycle();
+
+  Future<CommandOutcome> setOptimizerIntervalSeconds(int seconds) =>
+      _mqtt.setOptimizerIntervalSeconds(seconds);
 
   Future<CommandOutcome> commissionNode({
     required String nodeMac,
@@ -248,22 +255,21 @@ class AppState {
     unawaited(_persistAlerts());
   }
 
-  // ── Local setup / preference state ───────────────────────────────────
   Future<bool> isSetupComplete() => _localState.isSetupComplete();
-
   Future<void> setSetupComplete(bool value) =>
       _localState.setSetupComplete(value);
-
   Future<void> setNodeNameOverride(String mac, String name) =>
       _localState.setNodeNameOverride(mac, name);
 
-  // ── Auth pass-through (Firebase stays behind this one front door) ───
   Stream<User?> get userChanges => authService.userChanges;
   User? get currentUser => authService.currentUser;
   Future<void> signOut() => authService.signOut();
 
   Future<InstallationAccess> resolveCurrentAccess() =>
       _accessControlService.resolve(currentUser);
+
+  Stream<List<KilowattsUserAccess>> watchAccessUsers() =>
+      _accessControlService.watchUsers();
 
   Future<void> assignRole({
     required String email,
@@ -274,6 +280,9 @@ class AppState {
     role: role,
     installationId: installationId,
   );
+
+  Future<void> revokeAccess(String email) =>
+      _accessControlService.revokeAccess(email);
 
   void dispose() {
     for (final subscription in _subscriptions) {
