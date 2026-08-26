@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/metric_card.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../system/models/system_state_model.dart';
 
 class PowerSummary extends StatelessWidget {
@@ -12,48 +12,29 @@ class PowerSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return ResponsiveCardGrid(
+      minCardWidth: 165,
+      maxColumns: 2,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Available Power',
-                value: Formatters.power(state.availablePowerW),
-                icon: Icons.bolt_outlined,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Committed Power',
-                value: Formatters.power(state.committedPowerW),
-                icon: Icons.power_outlined,
-              ),
-            ),
-          ],
+        MetricCard(
+          label: 'Available power',
+          value: Formatters.power(state.availablePowerW),
+          icon: Icons.bolt_outlined,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Fixed Loads',
-                value: Formatters.power(state.fixedLoadPowerW),
-                icon: Icons.push_pin_outlined,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Auto Loads',
-                value: Formatters.power(state.autoLoadPowerW),
-                icon: Icons.auto_mode_outlined,
-              ),
-            ),
-          ],
+        MetricCard(
+          label: 'Committed power',
+          value: Formatters.power(state.committedPowerW),
+          icon: Icons.power_outlined,
+        ),
+        MetricCard(
+          label: 'Fixed loads',
+          value: Formatters.power(state.fixedLoadPowerW),
+          icon: Icons.push_pin_outlined,
+        ),
+        MetricCard(
+          label: 'Automatic loads',
+          value: Formatters.power(state.autoLoadPowerW),
+          icon: Icons.auto_mode_outlined,
         ),
       ],
     );
