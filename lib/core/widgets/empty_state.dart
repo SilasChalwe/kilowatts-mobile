@@ -11,64 +11,42 @@ class EmptyState extends StatelessWidget {
     super.key,
     this.message,
     this.action,
-    this.compact = false,
   });
 
   final IconData icon;
   final String title;
   final String? message;
   final Widget? action;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final panel = Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 560),
-      padding: EdgeInsets.all(compact ? AppSpacing.md : AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: Icon(icon, size: 24, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: AppTextStyles.title.copyWith(fontSize: 18),
-          ),
-          if (message != null) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              message!,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.subtitle,
-            ),
-          ],
-          if (action != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            action!,
-          ],
-        ],
-      ),
-    );
-
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(compact ? AppSpacing.md : AppSpacing.lg),
-        child: panel,
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 40, color: AppColors.textSecondary),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.label,
+            ),
+            if (message != null) ...[
+              const SizedBox(height: AppSpacing.xxs),
+              Text(
+                message!,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.caption,
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              action!,
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -8,18 +8,17 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_text_field.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../alerts/screens/alerts_screen.dart';
 import '../../loads/models/load_model.dart';
 import '../../loads/screens/load_details_screen.dart';
+import '../../system/screens/system_topology_screen.dart';
 import '../models/installer_node_model.dart';
 import 'installer_configuration_dialogs.dart';
 
 class InstallerConsoleScreen extends StatefulWidget {
-  const InstallerConsoleScreen({super.key, this.embedded = false});
-
-  final bool embedded;
+  const InstallerConsoleScreen({super.key});
 
   @override
   State<InstallerConsoleScreen> createState() => _InstallerConsoleScreenState();
@@ -271,149 +270,91 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     );
   }
 
-  Widget _content(BuildContext context, {required bool showPageHeader}) {
-    final appState = AppStateScope.of(context);
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        appState.connectionStatus,
-        appState.systemState,
-        appState.installerNodes,
-        appState.loads,
-      ]),
-      builder: (context, _) {
-        final nodes = appState.installerNodes.value;
-        final loads = appState.loads.value;
-        InstallerNodeModel? central;
-        for (final node in nodes) {
-          if (node.isCentralNode) {
-            central = node;
-            break;
-          }
-        }
-
-        return ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          children: [
-            if (showPageHeader) ...[
-              const PageHeader(
-                title: 'Installer console',
-                subtitle:
-                    'Connection, battery protection, nodes and load commissioning.',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-            ],
-            _configurationGrid(appState.connectionStatus.value, central),
-            const SizedBox(height: AppSpacing.xl),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Nodes & loads',
-                    style: AppTextStyles.body.copyWith(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${nodes.length} nodes · ${loads.length} loads',
-                  style: AppTextStyles.caption,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            if (nodes.isEmpty)
-              const SectionCard(
-                child: Text(
-                  'No nodes have reported yet. Once Central is connected, discovered nodes will appear here.',
-                ),
-              )
-            else
-              _nodesGrid(nodes, loads),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _configurationGrid(
-    MqttConnectionStatus status,
-    InstallerNodeModel? central,
-  ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final gap = AppSpacing.md;
-        final columns = constraints.maxWidth >= 1120
-            ? 3
-            : constraints.maxWidth >= 720
-                ? 2
-                : 1;
-        final width =
-            (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            SizedBox(width: width, child: _brokerCard(status)),
-            SizedBox(width: width, child: _batteryCard(central)),
-            SizedBox(width: width, child: _safetyCard()),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _nodesGrid(List<InstallerNodeModel> nodes, List<LoadModel> loads) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final gap = AppSpacing.md;
-        final columns = constraints.maxWidth >= 1100 ? 2 : 1;
-        final width =
-            (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (final node in nodes)
-              SizedBox(
-                width: width,
-                child: _nodeCard(
-                  node,
-                  loads
-                      .where((load) => load.owningNodeMac == node.mac)
-                      .toList(),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      if (widget.embedded) {
-        return const Material(
-          color: Colors.transparent,
-          child: Center(child: CircularProgressIndicator()),
-        );
-      }
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (widget.embedded) {
-      return Material(
-        color: Colors.transparent,
-        child: SafeArea(child: _content(context, showPageHeader: true)),
-      );
-    }
-
+    final appState = AppStateScope.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Installer console')),
-      body: SafeArea(child: _content(context, showPageHeader: false)),
+      appBar: AppBar(
+        title: const Text('Installer console'),
+        actions: [
+          IconButton(
+            tooltip: 'Topology',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SystemTopologyScreen()),
+            ),
+            icon: const Icon(Icons.account_tree_outlined),
+          ),
+          IconButton(
+            tooltip: 'Activity',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AlertsScreen()),
+            ),
+            icon: const Icon(Icons.notifications_outlined),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+        ],
+      ),
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([
+            appState.connectionStatus,
+            appState.systemState,
+            appState.installerNodes,
+            appState.loads,
+          ]),
+          builder: (context, _) {
+            final nodes = appState.installerNodes.value;
+            final loads = appState.loads.value;
+            InstallerNodeModel? central;
+            for (final node in nodes) {
+              if (node.isCentralNode) {
+                central = node;
+                break;
+              }
+            }
+
+            return ListView(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              children: [
+                _brokerCard(appState.connectionStatus.value),
+                const SizedBox(height: AppSpacing.md),
+                _batteryCard(central),
+                const SizedBox(height: AppSpacing.md),
+                _safetyCard(),
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Nodes & loads', style: AppTextStyles.title),
+                    ),
+                    Text(
+                      '${nodes.length} nodes · ${loads.length} loads',
+                      style: AppTextStyles.caption,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                if (nodes.isEmpty)
+                  const SectionCard(child: Text('No nodes reported.'))
+                else
+                  for (final node in nodes) ...[
+                    _nodeCard(
+                      node,
+                      loads
+                          .where((load) => load.owningNodeMac == node.mac)
+                          .toList(),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                  ],
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -430,8 +371,14 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               children: [
                 SectionRow(label: 'Host', value: config.host),
                 SectionRow(label: 'Port', value: '${config.port}'),
-                SectionRow(label: 'WebSocket', value: config.webSocketPath),
-                SectionRow(label: 'Namespace', value: config.topicNamespace),
+                SectionRow(
+                  label: 'WebSocket path',
+                  value: config.webSocketPath,
+                ),
+                SectionRow(
+                  label: 'Topic namespace',
+                  value: config.topicNamespace,
+                ),
                 SectionRow(
                   label: 'Security',
                   value: config.useTls ? 'TLS enabled' : 'TLS off',
@@ -446,7 +393,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _editBroker,
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit'),
+                    label: const Text('Edit connection'),
                   ),
                 ),
               ],
@@ -471,7 +418,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final configured = state?.batterySensorConfigured == true;
     final simulated = state?.sensorInputSource?.toUpperCase() == 'SIMULATED';
     return SectionCard(
-      title: 'Battery monitor',
+      title: 'Central battery monitor',
       trailing: StatusBadge(
         label: configured ? 'Configured' : 'Not configured',
         tone: configured ? StatusTone.positive : StatusTone.warning,
@@ -504,12 +451,24 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               label: 'Capacity',
               value: _numberText(_lastBattery, 'batteryCapacityAmpHours', ' Ah'),
             ),
+            SectionRow(
+              label: 'Maximum sensor current',
+              value: _numberText(
+                _lastBattery,
+                'maximumExpectedCurrentAmps',
+                ' A',
+              ),
+            ),
+            SectionRow(
+              label: 'Shunt resistance',
+              value: _numberText(_lastBattery, 'shuntResistanceOhms', ' Ω'),
+            ),
             SectionRow(label: 'Last applied', value: _savedAt(_lastBattery)),
           ],
           const SizedBox(height: AppSpacing.sm),
           Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
               OutlinedButton.icon(
                 onPressed: central == null ? null : () => _configureBattery(central),
@@ -527,7 +486,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               if (simulated)
                 OutlinedButton(
                   onPressed: _setSimulationValues,
-                  child: const Text('Set readings'),
+                  child: const Text('Set simulated readings'),
                 ),
             ],
           ),
@@ -541,14 +500,14 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     return SectionCard(
       title: 'Safety policy',
       trailing: StatusBadge(
-        label: hasSnapshot ? 'Last applied here' : 'Not available',
+        label: hasSnapshot ? 'Last applied here' : 'Values unavailable',
         tone: hasSnapshot ? StatusTone.info : StatusTone.neutral,
       ),
       child: Column(
         children: [
           if (hasSnapshot) ...[
             SectionRow(
-              label: 'Minimum SoC',
+              label: 'Minimum state of charge',
               value: _numberText(
                 _lastSafety,
                 'minimumStateOfChargePercent',
@@ -560,7 +519,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               value: _numberText(_lastSafety, 'requiredRuntimeHours', ' h'),
             ),
             SectionRow(
-              label: 'Max battery current',
+              label: 'Maximum battery discharge',
               value: _numberText(
                 _lastSafety,
                 'maximumBatteryDischargeCurrentAmps',
@@ -568,17 +527,14 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               ),
             ),
             SectionRow(
-              label: 'Max main current',
+              label: 'Maximum main current',
               value: _numberText(_lastSafety, 'maximumMainCurrentAmps', ' A'),
             ),
             SectionRow(label: 'Last applied', value: _savedAt(_lastSafety)),
           ] else
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              child: Text(
-                'Central does not publish the stored policy. Configure it here to keep a last-applied record on this device.',
-                style: AppTextStyles.caption,
-              ),
+            const SectionRow(
+              label: 'Current values',
+              value: 'Not published by Central',
             ),
           const SizedBox(height: AppSpacing.sm),
           Align(
@@ -586,7 +542,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
             child: OutlinedButton.icon(
               onPressed: _configureSafety,
               icon: const Icon(Icons.edit_outlined),
-              label: Text(hasSnapshot ? 'Edit' : 'Configure'),
+              label: Text(hasSnapshot ? 'Edit policy' : 'Configure policy'),
             ),
           ),
         ],
@@ -624,15 +580,18 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
                   ? 'None declared'
                   : node.availableRelayPins.join(', '),
             ),
-          const Divider(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.sm),
           if (nodeLoads.isEmpty)
-            const Text('No loads configured.', style: AppTextStyles.caption)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              child: Text('No loads configured.'),
+            )
           else
             ...nodeLoads.map(_loadTile),
           const SizedBox(height: AppSpacing.sm),
           Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
               if (node.canBeCommissioned)
                 FilledButton.icon(
@@ -656,7 +615,9 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
                 FilledButton.icon(
                   onPressed: canAddLoad ? () => _addLoad(node, nodeLoads) : null,
                   icon: const Icon(Icons.add_outlined),
-                  label: Text(freePins.isEmpty ? 'No free relays' : 'Add load'),
+                  label: Text(
+                    freePins.isEmpty ? 'No free relay pins' : 'Add load',
+                  ),
                 ),
             ],
           ),
@@ -687,12 +648,11 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
           'GPIO ${load.relayPin} · ${Formatters.power(load.plannedPowerW)} · ${load.mode == LoadMode.auto ? 'Auto' : 'Fixed'} · Priority ${load.priority}/10\n$schedule',
         ),
         isThreeLine: true,
-        trailing: IconButton(
-          tooltip: 'Open load',
+        trailing: OutlinedButton(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)),
           ),
-          icon: const Icon(Icons.chevron_right_rounded),
+          child: const Text('Open'),
         ),
       ),
     );
@@ -708,7 +668,9 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
 
   String _savedAt(Map<String, dynamic>? data) {
     final raw = data?['savedAt']?.toString();
-    return Formatters.relativeTime(raw == null ? null : DateTime.tryParse(raw));
+    return Formatters.relativeTime(
+      raw == null ? null : DateTime.tryParse(raw),
+    );
   }
 
   String _connectionLabel(MqttConnectionStatus status) {
