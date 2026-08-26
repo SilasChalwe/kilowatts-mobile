@@ -1,12 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// A Firestore `users/{email}` document is the authorization boundary for
-/// the two UI products. Authentication alone proves a user has an account;
-/// it must not grant installer-level hardware configuration rights.
-/// Security rules (firestore.rules) restrict writes to that collection to
-/// accounts that already hold the installer role, and restrict reads to the
-/// owning account or an installer.
 enum KilowattsRole { homeowner, installer, unassigned }
 
 class InstallationAccess {
@@ -21,6 +15,33 @@ class InstallationAccess {
   bool get canManageHardware => role == KilowattsRole.installer;
 }
 
+class KilowattsUserAccess {
+  const KilowattsUserAccess({
+    required this.email,
+    required this.role,
+    this.installationId,
+  });
+
+  final String email;
+  final KilowattsRole role;
+  final String? installationId;
+
+  String get roleLabel {
+    switch (role) {
+      case KilowattsRole.installer:
+        return 'Installer';
+      case KilowattsRole.homeowner:
+        return 'Homeowner';
+      case KilowattsRole.unassigned:
+        return 'Unassigned';
+    }
+  }
+}
+
+/// Firestore `users/{email}` is the authorization boundary. Authentication
+/// proves identity; this collection decides which installation and role that
+/// identity can use. Firestore rules limit user-management writes to existing
+/// installers.
 class AccessControlService {
   AccessControlService({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -32,6 +53,19 @@ class AccessControlService {
 
   static String _docIdFor(String email) => email.trim().toLowerCase();
 
+  static KilowattsRole _parseRole(Object? value) {
+    switch (value?.toString().toLowerCase()) {
+      case 'installer':
+      case 'admin':
+        return KilowattsRole.installer;
+      case 'user':
+      case 'homeowner':
+        return KilowattsRole.homeowner;
+      default:
+        return KilowattsRole.unassigned;
+    }
+  }
+
   Future<InstallationAccess> resolve(User? user) async {
     final email = user?.email;
     if (email == null) {
@@ -40,29 +74,57 @@ class AccessControlService {
 
     final snapshot = await _users.doc(_docIdFor(email)).get();
     final data = snapshot.data() ?? const <String, dynamic>{};
-    final roleValue = data['role']?.toString().toLowerCase();
-    final role = switch (roleValue) {
-      'installer' || 'admin' => KilowattsRole.installer,
-      'user' || 'homeowner' => KilowattsRole.homeowner,
-      _ => KilowattsRole.unassigned,
-    };
-    final installationId = data['installationId']?.toString();
-    return InstallationAccess(role: role, installationId: installationId);
+    return InstallationAccess(
+      role: _parseRole(data['role']),
+      installationId: data['installationId']?.toString(),
+    );
   }
 
-  /// Grants [role] ('installer' or 'homeowner') to the account with [email]
-  /// by writing its Firestore role document. Security rules only allow this
-  /// write when the signed-in caller already holds the installer role.
+  /// Live installer view of every account assigned to Kilowatts.
+  Stream<List<KilowattsUserAccess>> watchUsers() {
+    return _users.snapshots().map((snapshot) {
+      final users = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return KilowattsUserAccess(
+          email: doc.id,
+          role: _parseRole(data['role']),
+          installationId: data['installationId']?.toString(),
+        );
+      }).toList();
+      users.sort((a, b) => a.email.compareTo(b.email));
+      return users;
+    });
+  }
+
+  /// Grants or changes an account role. Homeowners must belong to a concrete
+  /// installation; installers may span installations and therefore do not
+  /// require an installation id.
   Future<void> assignRole({
     required String email,
     required String role,
     String? installationId,
   }) {
-    return _users.doc(_docIdFor(email)).set({
-      'role': role,
-      if (installationId != null && installationId.isNotEmpty)
-        'installationId': installationId,
+    final normalizedEmail = _docIdFor(email);
+    final normalizedRole = role.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      throw ArgumentError('A valid account email is required.');
+    }
+    if (normalizedRole != 'installer' && normalizedRole != 'homeowner') {
+      throw ArgumentError('Role must be installer or homeowner.');
+    }
+
+    final installation = installationId?.trim() ?? '';
+    if (normalizedRole == 'homeowner' && installation.isEmpty) {
+      throw ArgumentError('Homeowner access requires an installation ID.');
+    }
+
+    return _users.doc(normalizedEmail).set({
+      'role': normalizedRole,
+      if (normalizedRole == 'homeowner') 'installationId': installation,
+      if (normalizedRole == 'installer') 'installationId': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  Future<void> revokeAccess(String email) => _users.doc(_docIdFor(email)).delete();
 }
