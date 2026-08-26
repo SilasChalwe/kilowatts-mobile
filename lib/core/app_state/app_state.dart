@@ -195,6 +195,12 @@ class AppState {
   Future<CommandOutcome> setOptimizerIntervalSeconds(int seconds) =>
       _mqtt.setOptimizerIntervalSeconds(seconds);
 
+  Future<int?> readLastInstallerOptimizerIntervalSeconds() =>
+      _localState.readInstallerOptimizerIntervalSeconds();
+
+  Future<void> cacheLastInstallerOptimizerIntervalSeconds(int seconds) =>
+      _localState.cacheInstallerOptimizerIntervalSeconds(seconds);
+
   Future<CommandOutcome> commissionNode({
     required String nodeMac,
     required String friendlyName,
