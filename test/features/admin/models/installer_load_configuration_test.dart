@@ -9,10 +9,7 @@ void main() {
       name: 'Pump',
       relayPin: 16,
       relayActiveHigh: false,
-      nominalVoltageVolts: 12,
-      nominalCurrentAmps: 2.5,
-      branchMaximumCurrentAmps: 10,
-      startupWatts: 45,
+      powerRatingWatts: 30,
       priority: 8,
       mode: LoadMode.auto,
       powerType: InstallerLoadPowerType.dc,
@@ -46,16 +43,13 @@ void main() {
     });
   });
 
-  test('AC load publishes AC power type', () {
+  test('AC load publishes AC power type without unused commissioning fields', () {
     const configuration = InstallerLoadConfiguration(
       nodeMac: 'AA:BB:CC:DD:EE:FF',
       name: 'Lamp',
       relayPin: 17,
       relayActiveHigh: true,
-      nominalVoltageVolts: 230,
-      nominalCurrentAmps: 0.2,
-      branchMaximumCurrentAmps: 5,
-      startupWatts: 46,
+      powerRatingWatts: 46,
       priority: 4,
       mode: LoadMode.fixed,
       powerType: InstallerLoadPowerType.ac,
@@ -65,5 +59,9 @@ void main() {
     expect(load['powerType'], 'AC');
     expect(load['powerRatingWatts'], 46.0);
     expect(load['schedule'], {'enabled': false});
+    expect(load.containsKey('nominalVoltageVolts'), isFalse);
+    expect(load.containsKey('nominalCurrentAmps'), isFalse);
+    expect(load.containsKey('branchMaximumCurrentAmps'), isFalse);
+    expect(load.containsKey('startupWatts'), isFalse);
   });
 }
