@@ -5,13 +5,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../shell/screens/main_shell.dart';
+import 'installer_console_screen.dart';
 import 'installer_operations_screen.dart';
-import 'installer_portal_screen.dart';
 import 'installer_users_screen.dart';
 
-/// Installer/admin is a superset role, but the homeowner product remains the
-/// primary daily-use surface. Installer work opens as focused full-screen
-/// workspaces instead of nesting tab navigation around the homeowner shell.
 class InstallerRoleShell extends StatelessWidget {
   const InstallerRoleShell({super.key});
 
@@ -38,7 +35,7 @@ class InstallerRoleShell extends StatelessWidget {
             onSelected: (action) {
               switch (action) {
                 case _InstallerAction.console:
-                  _open(context, const InstallerPortalScreen());
+                  _open(context, const InstallerConsoleScreen());
                   break;
                 case _InstallerAction.operations:
                   _open(context, const InstallerOperationsScreen());
@@ -55,7 +52,7 @@ class InstallerRoleShell extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.build_outlined),
                   title: Text('Installer console'),
-                  subtitle: Text('Nodes, loads, battery and MQTT'),
+                  subtitle: Text('Review and configure installation'),
                 ),
               ),
               PopupMenuItem(
@@ -64,7 +61,7 @@ class InstallerRoleShell extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.tune_outlined),
                   title: Text('System operations'),
-                  subtitle: Text('Run optimization and runtime controls'),
+                  subtitle: Text('Optimization controls'),
                 ),
               ),
               PopupMenuItem(
@@ -73,7 +70,7 @@ class InstallerRoleShell extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.group_outlined),
                   title: Text('Users & access'),
-                  subtitle: Text('Homeowners and installer roles'),
+                  subtitle: Text('Homeowners and installers'),
                 ),
               ),
             ],
@@ -88,39 +85,26 @@ class InstallerRoleShell extends StatelessWidget {
             children: [
               const Padding(
                 padding: EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Installer workspace', style: AppTextStyles.title),
-                    SizedBox(height: 4),
-                    Text(
-                      'Home controls plus installation administration',
-                      style: AppTextStyles.caption,
-                    ),
-                  ],
-                ),
+                child: Text('Installer workspace', style: AppTextStyles.title),
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.home_outlined),
                 title: const Text('Home controls'),
-                subtitle: const Text('Dashboard, loads, topology and alerts'),
                 selected: true,
                 onTap: () => Navigator.of(context).pop(),
               ),
               ListTile(
                 leading: const Icon(Icons.build_outlined),
                 title: const Text('Installer console'),
-                subtitle: const Text('Commission and configure hardware'),
                 onTap: () {
                   Navigator.of(context).pop();
-                  _open(context, const InstallerPortalScreen());
+                  _open(context, const InstallerConsoleScreen());
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.tune_outlined),
                 title: const Text('System operations'),
-                subtitle: const Text('Optimization and Central controls'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _open(context, const InstallerOperationsScreen());
@@ -129,7 +113,6 @@ class InstallerRoleShell extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.group_outlined),
                 title: const Text('Users & access'),
-                subtitle: const Text('Manage homeowners and installers'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _open(context, const InstallerUsersScreen());
@@ -149,7 +132,7 @@ class InstallerRoleShell extends StatelessWidget {
                     SizedBox(width: AppSpacing.xs),
                     Expanded(
                       child: Text(
-                        'Installer role includes every homeowner operation.',
+                        'Installer access includes homeowner controls.',
                         style: AppTextStyles.caption,
                       ),
                     ),
