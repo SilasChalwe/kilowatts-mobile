@@ -8,8 +8,8 @@ import '../../../core/widgets/development_mode_badge.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/live_status_badge.dart';
 import '../../../core/widgets/loading_indicator.dart';
-import '../../system/models/topology_model.dart';
 import '../../settings/screens/system_connection_settings_screen.dart';
+import '../../system/models/topology_model.dart';
 import '../widgets/battery_summary.dart';
 import '../widgets/load_summary.dart';
 import '../widgets/power_summary.dart';
@@ -42,7 +42,7 @@ class DashboardScreen extends StatelessWidget {
             return ErrorState(
               title: 'Connect your system',
               message:
-                  'Set up this phone using the broker details supplied by your installer.',
+                  'Set up this device using the broker details supplied by your installer.',
               actionLabel: 'Set up connection',
               onRetry: () => Navigator.of(context).push(
                 MaterialPageRoute(
@@ -58,7 +58,7 @@ class DashboardScreen extends StatelessWidget {
             );
           }
           return ErrorState(
-            title: 'No System Data Yet',
+            title: 'No system data yet',
             message:
                 'Waiting for the Central Node to publish its first update.',
             onRetry: appState.connectMqtt,
@@ -73,8 +73,19 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text('Dashboard', style: AppTextStyles.title),
-                    const Spacer(),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Dashboard', style: AppTextStyles.title),
+                          SizedBox(height: 2),
+                          Text(
+                            'Live energy, load and system health overview',
+                            style: AppTextStyles.caption,
+                          ),
+                        ],
+                      ),
+                    ),
                     const DevelopmentModeBadge(),
                     const SizedBox(width: AppSpacing.sm),
                     const LiveStatusBadge(),
@@ -84,19 +95,38 @@ class DashboardScreen extends StatelessWidget {
                 Expanded(
                   child: ListView(
                     children: [
-                      BatterySummary(state: state),
+                      SystemHealthSummary(
+                        connectionStatus: connectionStatus,
+                        topology: appState.topology.value,
+                      ),
                       const SizedBox(height: AppSpacing.md),
-                      PowerSummary(state: state),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final wide = constraints.maxWidth >= 760;
+                          if (!wide) {
+                            return Column(
+                              children: [
+                                BatterySummary(state: state),
+                                const SizedBox(height: AppSpacing.md),
+                                PowerSummary(state: state),
+                              ],
+                            );
+                          }
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: BatterySummary(state: state)),
+                              const SizedBox(width: AppSpacing.md),
+                              Expanded(child: PowerSummary(state: state)),
+                            ],
+                          );
+                        },
+                      ),
                       const SizedBox(height: AppSpacing.md),
                       LoadSummary(
                         loads: appState.loads.value,
                         topology:
                             appState.topology.value ?? TopologyModel.empty,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      SystemHealthSummary(
-                        connectionStatus: connectionStatus,
-                        topology: appState.topology.value,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       RecentAlerts(
