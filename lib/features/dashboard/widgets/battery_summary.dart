@@ -17,67 +17,81 @@ class BatterySummary extends StatelessWidget {
     final soc = state.batterySocPercent;
     final isLow =
         soc != null && soc <= AppConstants.defaultLowBatteryWarningPercent;
+    final accent = isLow ? AppColors.warning : AppColors.success;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
+      constraints: const BoxConstraints(minHeight: 144),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
           SizedBox(
-            width: 64,
-            height: 64,
+            width: 76,
+            height: 76,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                CircularProgressIndicator(
-                  value: soc == null ? 0 : (soc / 100).clamp(0, 1),
-                  strokeWidth: 6,
-                  backgroundColor: AppColors.surfaceMuted,
-                  valueColor: AlwaysStoppedAnimation(
-                    isLow ? AppColors.warning : AppColors.success,
+                SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: soc == null ? 0 : (soc / 100).clamp(0, 1),
+                    strokeWidth: 7,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: AppColors.surfaceMuted,
+                    valueColor: AlwaysStoppedAnimation(accent),
                   ),
                 ),
                 Text(
                   Formatters.percent(soc),
-                  style: AppTextStyles.caption.copyWith(
+                  style: AppTextStyles.label.copyWith(
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Battery State of Charge',
-                  style: AppTextStyles.caption,
-                ),
-                const SizedBox(height: 2),
                 Text(
-                  '${Formatters.voltage(state.batteryVoltage)} · ${Formatters.current(state.batteryCurrent)}',
-                  style: AppTextStyles.body.copyWith(
+                  'Battery state of charge',
+                  style: AppTextStyles.caption.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (isLow) ...[
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Battery reserve is low',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.warning,
-                      fontWeight: FontWeight.w600,
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '${Formatters.voltage(state.batteryVoltage)}  ·  ${Formatters.current(state.batteryCurrent)}',
+                  style: AppTextStyles.sectionTitle,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        isLow ? 'Battery reserve is low' : 'Battery reserve is healthy',
+                        style: AppTextStyles.caption.copyWith(color: accent),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
