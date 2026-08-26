@@ -2,14 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
+import '../../admin/screens/installer_role_shell.dart';
 import '../../auth/data/access_control_service.dart';
-import '../../admin/screens/installer_portal_screen.dart';
 import 'main_shell.dart';
 
-/// The authenticated entry point keeps the two products separate:
-/// installer/administrator work is web-only, while a homeowner always lands
-/// in the simple mobile shell. Mobile no longer routes a normal user through
-/// hardware discovery, GPIO, INA219 or safety-policy setup.
+/// Authenticated role gate. A homeowner gets the normal control application.
+/// An installer gets a superset experience that contains those same homeowner
+/// controls plus commissioning and user administration.
 class SystemEntryGate extends StatefulWidget {
   const SystemEntryGate({super.key});
 
@@ -38,18 +37,20 @@ class _SystemEntryGateState extends State<SystemEntryGate> {
         }
 
         final access = snapshot.data!;
-        if (kIsWeb) {
-          return access.canManageHardware
-              ? const InstallerPortalScreen()
-              : const _InstallerAccessRequiredScreen();
+        if (access.role == KilowattsRole.installer) {
+          // The full installer workstation is optimized for web/desktop. On
+          // mobile an installer still gets all homeowner operations; hardware
+          // commissioning remains on the wider installer workspace.
+          return kIsWeb ? const InstallerRoleShell() : const MainShell();
         }
 
-        // A Firebase account without an installation role is not a valid
-        // homeowner account. Do not let a self-registered, unassigned user
-        // reach broker configuration or household controls.
-        return access.role == KilowattsRole.unassigned
-            ? const _HomeownerAccessRequiredScreen()
-            : const MainShell();
+        if (access.role == KilowattsRole.homeowner) {
+          return const MainShell();
+        }
+
+        return kIsWeb
+            ? const _InstallerAccessRequiredScreen()
+            : const _HomeownerAccessRequiredScreen();
       },
     );
   }
