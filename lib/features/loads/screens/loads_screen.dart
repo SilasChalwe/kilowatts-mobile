@@ -4,7 +4,6 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../models/load_model.dart';
@@ -79,8 +78,6 @@ class _LoadsScreenState extends State<LoadsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const PageHeader(title: 'Loads'),
-                  const SizedBox(height: AppSpacing.lg),
                   SectionCard(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     child: LayoutBuilder(
