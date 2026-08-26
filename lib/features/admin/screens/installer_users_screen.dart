@@ -1,13 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../auth/data/access_control_service.dart';
 
 class InstallerUsersScreen extends StatefulWidget {
@@ -20,6 +22,57 @@ class InstallerUsersScreen extends StatefulWidget {
 }
 
 class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
+  StreamSubscription<List<KilowattsUserAccess>>? _subscription;
+  List<KilowattsUserAccess> _users = const [];
+  bool _loading = true;
+  bool _subscribed = false;
+  Object? _refreshError;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_subscribed) return;
+    _subscribed = true;
+    _subscribe();
+  }
+
+  void _subscribe() {
+    final appState = AppStateScope.of(context);
+    _subscription = appState.watchAccessUsers().listen(
+      (users) {
+        if (!mounted) return;
+        setState(() {
+          _users = List.unmodifiable(users);
+          _loading = false;
+          _refreshError = null;
+        });
+      },
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _refreshError = error;
+        });
+      },
+    );
+  }
+
+  Future<void> _retry() async {
+    await _subscription?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _loading = _users.isEmpty;
+      _refreshError = null;
+    });
+    _subscribe();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
   Future<void> _openEditor([KilowattsUserAccess? existing]) async {
     final result = await showDialog<_AccessDraft>(
       context: context,
@@ -88,132 +141,118 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
 
   Widget _content(BuildContext context) {
     final appState = AppStateScope.of(context);
-    return StreamBuilder<List<KilowattsUserAccess>>(
-      stream: appState.watchAccessUsers(),
-      builder: (context, snapshot) {
-        final users = snapshot.data ?? const <KilowattsUserAccess>[];
-        final homeowners = users
-            .where((user) => user.role == KilowattsRole.homeowner)
-            .toList();
-        final installers = users
-            .where((user) => user.role == KilowattsRole.installer)
-            .toList();
+    final currentEmail = appState.currentUser?.email;
 
-        return ListView(
-          children: [
-            ResponsiveContent(
-              maxWidth: 1200,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  PageHeader(
-                    eyebrow: 'Installation',
-                    title: 'Users & access',
-                    subtitle:
-                        'Control who can operate this installation and who can administer it.',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _openEditor,
-                        icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                        label: const Text('Add user'),
-                      ),
-                    ],
+    return ListView(
+      children: [
+        ResponsiveContent(
+          maxWidth: 1050,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PageHeader(
+                title: 'Users & access',
+                actions: [
+                  FilledButton.icon(
+                    onPressed: _openEditor,
+                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                    label: const Text('Add user'),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      !snapshot.hasData)
-                    const SectionCard(
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          SizedBox(width: AppSpacing.sm),
-                          Text('Loading access records…'),
-                        ],
-                      ),
-                    )
-                  else if (snapshot.hasError)
-                    SectionCard(
-                      title: 'Access records unavailable',
-                      subtitle:
-                          'The rest of the installer workspace remains available.',
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: AppColors.errorSoft,
-                          borderRadius: BorderRadius.circular(AppRadius.sm),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.cloud_off_outlined, color: AppColors.error),
-                            SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                'Check Firestore permissions and network connectivity, then try this page again.',
-                                style: AppTextStyles.caption,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else ...[
-                    ResponsiveCardGrid(
-                      minCardWidth: 210,
-                      maxColumns: 3,
-                      children: [
-                        MetricCard(
-                          label: 'Homeowners',
-                          value: '${homeowners.length}',
-                          icon: Icons.home_outlined,
-                        ),
-                        MetricCard(
-                          label: 'Installers',
-                          value: '${installers.length}',
-                          icon: Icons.admin_panel_settings_outlined,
-                        ),
-                        MetricCard(
-                          label: 'Accounts with access',
-                          value: '${users.length}',
-                          icon: Icons.people_outline,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    ResponsiveCardGrid(
-                      minCardWidth: 440,
-                      maxColumns: 2,
-                      children: [
-                        _UserSection(
-                          title: 'Homeowners',
-                          subtitle: 'Operate the installation assigned to their account.',
-                          users: homeowners,
-                          currentEmail: appState.currentUser?.email,
-                          onEdit: _openEditor,
-                          onRevoke: _revoke,
-                        ),
-                        _UserSection(
-                          title: 'Installers & administrators',
-                          subtitle:
-                              'Full homeowner controls plus commissioning and administration.',
-                          users: installers,
-                          currentEmail: appState.currentUser?.email,
-                          onEdit: _openEditor,
-                          onRevoke: _revoke,
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
               ),
-            ),
-          ],
-        );
-      },
+              const SizedBox(height: AppSpacing.lg),
+              if (_loading && _users.isEmpty)
+                const SectionCard(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: AppSpacing.sm),
+                        Text('Loading users…'),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_users.isEmpty && _refreshError != null)
+                SectionCard(
+                  title: 'Users unavailable',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cloud_off_outlined, color: AppColors.error),
+                      const SizedBox(width: AppSpacing.sm),
+                      const Expanded(
+                        child: Text(
+                          'The access list could not be loaded.',
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                      OutlinedButton(onPressed: _retry, child: const Text('Retry')),
+                    ],
+                  ),
+                )
+              else ...[
+                if (_refreshError != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.warningSoft,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.sync_problem_outlined,
+                          size: 18,
+                          color: AppColors.warning,
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                        const Expanded(
+                          child: Text(
+                            'Could not refresh users. Showing the last available list.',
+                            style: AppTextStyles.caption,
+                          ),
+                        ),
+                        TextButton(onPressed: _retry, child: const Text('Retry')),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                SectionCard(
+                  title: 'Accounts',
+                  trailing: Text(
+                    '${_users.length}',
+                    style: AppTextStyles.caption,
+                  ),
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < _users.length; index++) ...[
+                        _UserTile(
+                          user: _users[index],
+                          isCurrent: _users[index].email.toLowerCase() ==
+                              currentEmail?.toLowerCase(),
+                          onEdit: () => _openEditor(_users[index]),
+                          onRevoke: () => _revoke(_users[index]),
+                        ),
+                        if (index != _users.length - 1) const Divider(),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -225,6 +264,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
         child: SafeArea(child: _content(context)),
       );
     }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Users & access')),
       body: SafeArea(child: _content(context)),
@@ -294,7 +334,7 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existing == null ? 'Add user access' : 'Edit access'),
+      title: Text(widget.existing == null ? 'Add user' : 'Edit access'),
       content: SizedBox(
         width: 500,
         child: Form(
@@ -306,7 +346,7 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
               TextFormField(
                 controller: _email,
                 enabled: widget.existing == null,
-                decoration: const InputDecoration(labelText: 'Account email'),
+                decoration: const InputDecoration(labelText: 'Email'),
                 keyboardType: TextInputType.emailAddress,
                 validator: (value) {
                   final email = value?.trim() ?? '';
@@ -319,10 +359,7 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
                 decoration: const InputDecoration(labelText: 'Role'),
                 items: const [
                   DropdownMenuItem(value: 'homeowner', child: Text('Homeowner')),
-                  DropdownMenuItem(
-                    value: 'installer',
-                    child: Text('Installer / administrator'),
-                  ),
+                  DropdownMenuItem(value: 'installer', child: Text('Installer')),
                 ],
                 onChanged: (value) => setState(() => _role = value!),
               ),
@@ -336,13 +373,6 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
                       : 'Installation ID is required.',
                 ),
               ],
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                _role == 'installer'
-                    ? 'Installers receive the full homeowner experience plus installation administration.'
-                    : 'Homeowners can operate only the installation assigned above.',
-                style: AppTextStyles.caption,
-              ),
             ],
           ),
         ),
@@ -352,59 +382,8 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _save, child: const Text('Save access')),
+        FilledButton(onPressed: _save, child: const Text('Save')),
       ],
-    );
-  }
-}
-
-class _UserSection extends StatelessWidget {
-  const _UserSection({
-    required this.title,
-    required this.subtitle,
-    required this.users,
-    required this.currentEmail,
-    required this.onEdit,
-    required this.onRevoke,
-  });
-
-  final String title;
-  final String subtitle;
-  final List<KilowattsUserAccess> users;
-  final String? currentEmail;
-  final ValueChanged<KilowattsUserAccess> onEdit;
-  final ValueChanged<KilowattsUserAccess> onRevoke;
-
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      title: title,
-      subtitle: subtitle,
-      child: users.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-              child: Row(
-                children: [
-                  Icon(Icons.person_off_outlined, color: AppColors.textTertiary),
-                  SizedBox(width: AppSpacing.sm),
-                  Text('No accounts assigned.', style: AppTextStyles.caption),
-                ],
-              ),
-            )
-          : Column(
-              children: [
-                for (var index = 0; index < users.length; index++) ...[
-                  _UserTile(
-                    user: users[index],
-                    isCurrent: users[index].email.toLowerCase() ==
-                        currentEmail?.toLowerCase(),
-                    onEdit: () => onEdit(users[index]),
-                    onRevoke: () => onRevoke(users[index]),
-                  ),
-                  if (index != users.length - 1) const Divider(),
-                ],
-              ],
-            ),
     );
   }
 }
@@ -424,18 +403,20 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isInstaller = user.role == KilowattsRole.installer;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 19,
+            radius: 20,
             backgroundColor: AppColors.primarySoft,
             child: Icon(
-              user.role == KilowattsRole.installer
+              isInstaller
                   ? Icons.admin_panel_settings_outlined
                   : Icons.home_outlined,
-              size: 19,
+              size: 20,
               color: AppColors.primary,
             ),
           ),
@@ -460,20 +441,28 @@ class _UserTile extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  user.role == KilowattsRole.homeowner
-                      ? user.installationId ?? 'No installation assigned'
-                      : 'Installer / administrator',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.caption,
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    StatusBadge(
+                      label: isInstaller ? 'Installer' : 'Homeowner',
+                      tone: isInstaller ? StatusTone.info : StatusTone.neutral,
+                    ),
+                    if (!isInstaller && user.installationId != null)
+                      Text(
+                        user.installationId!,
+                        style: AppTextStyles.caption,
+                      ),
+                  ],
                 ),
               ],
             ),
           ),
           PopupMenuButton<_UserAction>(
-            tooltip: 'Access actions',
+            tooltip: 'User actions',
             onSelected: (action) {
               if (action == _UserAction.edit) onEdit();
               if (action == _UserAction.revoke && !isCurrent) onRevoke();
