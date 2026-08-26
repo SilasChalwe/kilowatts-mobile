@@ -4,8 +4,8 @@ import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 
 /// Consistent page heading for dashboard, system and installer workspaces.
-/// Keeps the title, short context and page-level actions together without
-/// turning each screen into a different visual language.
+/// The heading establishes the page hierarchy; actions stay secondary and
+/// collapse below the title on narrow layouts.
 class PageHeader extends StatelessWidget {
   const PageHeader({
     required this.title,
@@ -27,10 +27,16 @@ class PageHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: AppTextStyles.title),
+            Text(
+              title,
+              style: AppTextStyles.display.copyWith(fontSize: compact ? 24 : 27),
+            ),
             if (subtitle != null) ...[
-              const SizedBox(height: 3),
-              Text(subtitle!, style: AppTextStyles.subtitle),
+              const SizedBox(height: AppSpacing.xxs),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Text(subtitle!, style: AppTextStyles.subtitle),
+              ),
             ],
           ],
         );
@@ -56,7 +62,7 @@ class PageHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: heading),
-            const SizedBox(width: AppSpacing.md),
+            const SizedBox(width: AppSpacing.lg),
             Wrap(
               spacing: AppSpacing.xs,
               runSpacing: AppSpacing.xs,
