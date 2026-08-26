@@ -6,14 +6,12 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/development_mode_badge.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../settings/screens/system_connection_settings_screen.dart';
 import '../../system/models/topology_model.dart';
 import '../widgets/battery_summary.dart';
 import '../widgets/load_summary.dart';
 import '../widgets/power_summary.dart';
-import '../widgets/recent_alerts.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key, this.onViewAllAlerts});
@@ -29,7 +27,6 @@ class DashboardScreen extends StatelessWidget {
         appState.systemState,
         appState.loads,
         appState.topology,
-        appState.alerts,
         appState.connectionStatus,
       ]),
       builder: (context, _) {
@@ -74,26 +71,16 @@ class DashboardScreen extends StatelessWidget {
                 const SizedBox(height: AppSpacing.md),
               ],
               ResponsiveCardGrid(
-                minCardWidth: 420,
-                maxColumns: 2,
+                minCardWidth: 360,
+                maxColumns: 3,
                 children: [
-                  Column(
-                    children: [
-                      BatterySummary(state: state),
-                      const SizedBox(height: AppSpacing.md),
-                      LoadSummary(
-                        loads: appState.loads.value,
-                        topology: topology,
-                      ),
-                    ],
-                  ),
+                  BatterySummary(state: state),
                   PowerSummary(state: state),
+                  LoadSummary(
+                    loads: appState.loads.value,
+                    topology: topology,
+                  ),
                 ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              RecentAlerts(
-                alerts: appState.alerts.value,
-                onViewAll: onViewAllAlerts,
               ),
             ],
           );
@@ -101,16 +88,7 @@ class DashboardScreen extends StatelessWidget {
 
         return SafeArea(
           child: SingleChildScrollView(
-            child: ResponsiveContent(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const PageHeader(title: 'Overview'),
-                  const SizedBox(height: AppSpacing.lg),
-                  stateBody,
-                ],
-              ),
-            ),
+            child: ResponsiveContent(child: stateBody),
           ),
         );
       },
