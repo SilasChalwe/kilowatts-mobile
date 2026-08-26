@@ -8,10 +8,8 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../models/load_model.dart';
 
-/// FIXED: the user's requested state is authoritative (subject to safety),
-/// so this shows a real control. AUTO: Best-First planning decides the
-/// target — this only explains what's happening, it never offers a manual
-/// override button that would bypass planning.
+/// FIXED loads expose a direct requested ON/OFF action. AUTO loads remain
+/// controlled by Best-First Search and instead explain their current result.
 class LoadStateControl extends StatefulWidget {
   const LoadStateControl({required this.load, super.key});
 
@@ -23,12 +21,16 @@ class LoadStateControl extends StatefulWidget {
 
 class _LoadStateControlState extends State<LoadStateControl> {
   bool _isSending = false;
-  String? _error;
+  String? _message;
+  bool _messageIsError = false;
 
   Future<void> _setState(bool requestedOn) async {
     setState(() {
       _isSending = true;
-      _error = null;
+      _message = requestedOn
+          ? 'Sending ON request to Central…'
+          : 'Sending OFF request to Central…';
+      _messageIsError = false;
     });
 
     final outcome = await AppStateScope.of(context).setLoadFixedState(
@@ -40,7 +42,10 @@ class _LoadStateControlState extends State<LoadStateControl> {
     if (!mounted) return;
     setState(() {
       _isSending = false;
-      _error = outcome.status == CommandStatus.failed ? outcome.message : null;
+      _messageIsError = outcome.status == CommandStatus.failed;
+      _message = outcome.status == CommandStatus.confirmed
+          ? 'Central confirmed the ${requestedOn ? 'ON' : 'OFF'} request.'
+          : outcome.message ?? 'Central rejected this command.';
     });
   }
 
@@ -53,33 +58,55 @@ class _LoadStateControlState extends State<LoadStateControl> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Requested: ${load.requestedState == null ? '—' : (load.requestedState! ? 'ON' : 'OFF')}',
-                  style: AppTextStyles.caption,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isOn ? Icons.power_rounded : Icons.power_off_rounded,
+                  color: isOn ? AppColors.success : AppColors.textSecondary,
                 ),
-              ),
-              Expanded(
-                child: Text(
-                  'Confirmed: ${load.confirmedState == null ? '—' : (load.confirmedState! ? 'ON' : 'OFF')}',
-                  style: AppTextStyles.caption,
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isOn ? 'Requested ON' : 'Requested OFF',
+                        style: AppTextStyles.label,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        load.confirmedStateValid && load.confirmedState != null
+                            ? 'Relay feedback: ${load.confirmedState! ? 'ON' : 'OFF'}'
+                            : 'Central accepted state is shown; downstream appliance feedback is not available.',
+                        style: AppTextStyles.caption,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           PrimaryButton(
-            label: _isSending ? 'Sending…' : (isOn ? 'Turn Off' : 'Turn On'),
+            label: _isSending
+                ? 'Waiting for Central…'
+                : (isOn ? 'Turn Off' : 'Turn On'),
             isLoading: _isSending,
-            onPressed: load.available ? () => _setState(!isOn) : null,
+            onPressed: load.available && !_isSending ? () => _setState(!isOn) : null,
           ),
-          if (_error != null) ...[
+          if (_message != null) ...[
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              _error!,
-              style: AppTextStyles.caption.copyWith(color: AppColors.error),
+            _CommandMessage(
+              message: _message!,
+              isError: _messageIsError,
+              isPending: _isSending,
             ),
           ],
         ],
@@ -91,12 +118,13 @@ class _LoadStateControlState extends State<LoadStateControl> {
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: AppColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            isOn ? Icons.check_circle_outline : Icons.pause_circle_outline,
+            isOn ? Icons.auto_awesome_rounded : Icons.pause_circle_outline,
             color: isOn ? AppColors.success : AppColors.textSecondary,
           ),
           const SizedBox(width: AppSpacing.sm),
@@ -105,17 +133,67 @@ class _LoadStateControlState extends State<LoadStateControl> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Automatic mode · Current state: ${isOn ? 'ON' : 'OFF'}',
+                  'Automatic · ${isOn ? 'Selected by Best-First Search' : 'Currently deferred'}',
                   style: AppTextStyles.label,
                 ),
-                if (!isOn && load.rejectionReason != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Reason: ${load.rejectionReason!.friendlyText}',
-                    style: AppTextStyles.caption,
-                  ),
-                ],
+                const SizedBox(height: 3),
+                Text(
+                  !isOn && load.rejectionReason != null
+                      ? load.rejectionReason!.friendlyText
+                      : 'Priority, schedule and available power determine this load automatically.',
+                  style: AppTextStyles.caption,
+                ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommandMessage extends StatelessWidget {
+  const _CommandMessage({
+    required this.message,
+    required this.isError,
+    required this.isPending,
+  });
+
+  final String message;
+  final bool isError;
+  final bool isPending;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isError
+        ? AppColors.error
+        : isPending
+            ? AppColors.info
+            : AppColors.success;
+    final icon = isError
+        ? Icons.error_outline_rounded
+        : isPending
+            ? Icons.sync_rounded
+            : Icons.check_circle_outline_rounded;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.caption.copyWith(color: color),
             ),
           ),
         ],
