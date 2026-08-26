@@ -14,7 +14,6 @@ import '../widgets/battery_summary.dart';
 import '../widgets/load_summary.dart';
 import '../widgets/power_summary.dart';
 import '../widgets/recent_alerts.dart';
-import '../widgets/system_health_summary.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key, this.onViewAllAlerts});
@@ -57,19 +56,14 @@ class DashboardScreen extends StatelessWidget {
           } else {
             stateBody = ErrorState(
               icon: Icons.cloud_off_outlined,
-              title: 'Live data unavailable',
-              message: 'Reconnect to continue monitoring and control.',
+              title: 'No telemetry available',
+              message: 'Connect the system to load operating data.',
               actionLabel: 'Reconnect',
               onRetry: appState.connectMqtt,
             );
           }
         } else {
           final topology = appState.topology.value ?? TopologyModel.empty;
-          final healthNotice = SystemHealthSummary(
-            connectionStatus: connectionStatus,
-            topology: appState.topology.value,
-          );
-          final showHealthNotice = healthNotice.health != SystemHealth.ok;
           final isDevelopment = state.operatingEnvironment == 'DEVELOPMENT';
 
           stateBody = Column(
@@ -77,10 +71,6 @@ class DashboardScreen extends StatelessWidget {
             children: [
               if (isDevelopment) ...[
                 const DevelopmentModeBadge(),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              if (showHealthNotice) ...[
-                healthNotice,
                 const SizedBox(height: AppSpacing.md),
               ],
               ResponsiveCardGrid(
