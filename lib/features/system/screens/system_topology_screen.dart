@@ -38,19 +38,13 @@ class SystemTopologyScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        PageHeader(
-                          title: 'System',
-                          subtitle: hasTopology
-                              ? 'Communication topology and configured load ownership for this installation.'
-                              : 'Installation topology will appear after Central publishes its first report.',
-                        ),
+                        const PageHeader(title: 'System'),
                         const SizedBox(height: AppSpacing.lg),
                         if (!hasTopology)
                           const EmptyState(
                             icon: Icons.hub_outlined,
                             title: 'Topology unavailable',
-                            message:
-                                'Central has not reported a topology yet. Check that it is powered on and connected to the broker.',
+                            message: 'Central has not reported the installation yet.',
                           )
                         else ...[
                           ResponsiveCardGrid(
@@ -80,8 +74,6 @@ class SystemTopologyScreen extends StatelessWidget {
                           const SizedBox(height: AppSpacing.md),
                           SectionCard(
                             title: 'Installation topology',
-                            subtitle:
-                                'Select any node or load to inspect its current details.',
                             child: SizedBox(
                               height: MediaQuery.sizeOf(context).width < 700 ? 430 : 520,
                               child: GraphicalTopologyTree(
