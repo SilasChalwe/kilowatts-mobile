@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/development_mode_badge.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/live_status_badge.dart';
 import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/page_header.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../settings/screens/system_connection_settings_screen.dart';
 import '../../system/models/topology_model.dart';
 import '../widgets/battery_summary.dart';
@@ -37,12 +38,14 @@ class DashboardScreen extends StatelessWidget {
         final state = appState.systemState.value;
         final connectionStatus = appState.connectionStatus.value;
 
+        Widget stateBody;
         if (state == null) {
           if (connectionStatus == MqttConnectionStatus.notConfigured) {
-            return ErrorState(
-              title: 'Connect your system',
+            stateBody = ErrorState(
+              icon: Icons.router_outlined,
+              title: 'Connect this device',
               message:
-                  'Set up this device using the broker details supplied by your installer.',
+                  'Add the MQTT connection supplied for this installation to begin receiving live telemetry.',
               actionLabel: 'Set up connection',
               onRetry: () => Navigator.of(context).push(
                 MaterialPageRoute(
@@ -50,93 +53,75 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
             );
-          }
-          if (connectionStatus == MqttConnectionStatus.connecting ||
+          } else if (connectionStatus == MqttConnectionStatus.connecting ||
               connectionStatus == MqttConnectionStatus.reconnecting) {
-            return const LoadingIndicator(
-              message: 'Connecting to your system…',
+            stateBody = const LoadingIndicator(
+              message: 'Connecting to your Kilowatts system…',
+            );
+          } else {
+            stateBody = ErrorState(
+              icon: Icons.cloud_off_outlined,
+              title: 'Waiting for Central',
+              message:
+                  'The connection is configured, but Central has not published a live system update yet.',
+              onRetry: appState.connectMqtt,
             );
           }
-          return ErrorState(
-            title: 'No system data yet',
-            message:
-                'Waiting for the Central Node to publish its first update.',
-            onRetry: appState.connectMqtt,
+        } else {
+          final topology = appState.topology.value ?? TopologyModel.empty;
+          stateBody = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SystemHealthSummary(
+                connectionStatus: connectionStatus,
+                topology: appState.topology.value,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              ResponsiveCardGrid(
+                minCardWidth: 420,
+                maxColumns: 2,
+                children: [
+                  Column(
+                    children: [
+                      BatterySummary(state: state),
+                      const SizedBox(height: AppSpacing.md),
+                      LoadSummary(
+                        loads: appState.loads.value,
+                        topology: topology,
+                      ),
+                    ],
+                  ),
+                  PowerSummary(state: state),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              RecentAlerts(
+                alerts: appState.alerts.value,
+                onViewAll: onViewAllAlerts,
+              ),
+            ],
           );
         }
 
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Dashboard', style: AppTextStyles.title),
-                          SizedBox(height: 2),
-                          Text(
-                            'Live energy, load and system health overview',
-                            style: AppTextStyles.caption,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const DevelopmentModeBadge(),
-                    const SizedBox(width: AppSpacing.sm),
-                    const LiveStatusBadge(),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      SystemHealthSummary(
-                        connectionStatus: connectionStatus,
-                        topology: appState.topology.value,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final wide = constraints.maxWidth >= 760;
-                          if (!wide) {
-                            return Column(
-                              children: [
-                                BatterySummary(state: state),
-                                const SizedBox(height: AppSpacing.md),
-                                PowerSummary(state: state),
-                              ],
-                            );
-                          }
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: BatterySummary(state: state)),
-                              const SizedBox(width: AppSpacing.md),
-                              Expanded(child: PowerSummary(state: state)),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      LoadSummary(
-                        loads: appState.loads.value,
-                        topology:
-                            appState.topology.value ?? TopologyModel.empty,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      RecentAlerts(
-                        alerts: appState.alerts.value,
-                        onViewAll: onViewAllAlerts,
-                      ),
+          child: SingleChildScrollView(
+            child: ResponsiveContent(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const PageHeader(
+                    title: 'Overview',
+                    subtitle:
+                        'Live energy, load allocation and installation health.',
+                    actions: [
+                      DevelopmentModeBadge(),
+                      LiveStatusBadge(),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: AppSpacing.lg),
+                  stateBody,
+                ],
+              ),
             ),
           ),
         );
