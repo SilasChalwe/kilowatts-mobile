@@ -1,22 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../loads/models/load_model.dart';
 import '../models/node_model.dart';
 import '../models/topology_model.dart';
 
-/// Renders the installation as a top-down box-and-arrow diagram — Central
-/// at the root, Smart Nodes and the DC Loads they own as children, exactly
-/// mirroring the physical distribution board layout an installer already
-/// thinks in. This is a different visual from a generic indented tree list:
-/// every node is a fixed-size box, boxes at the same generation share one
-/// row, and a single downward arrow connects each parent to each child.
-///
-/// Communication topology (ESP-NOW hops to Central) and electrical topology
-/// (which branches a node owns) are still two different relationships
-/// under the hood (see [TopologyModel]) - a Smart Node's owned DC Loads and
-/// its communication-child Smart Nodes are just drawn as siblings one row
-/// below it, loads first, matching how an installer reads a physical board.
+/// Top-down installation map. The diagram keeps communication and electrical
+/// ownership readable without pretending to be a physical wiring schematic.
 class GraphicalTopologyTree extends StatelessWidget {
   const GraphicalTopologyTree({
     required this.topology,
@@ -31,10 +23,10 @@ class GraphicalTopologyTree extends StatelessWidget {
   final ValueChanged<NodeModel>? onNodeTap;
   final ValueChanged<LoadModel>? onLoadTap;
 
-  static const double _boxWidth = 168;
-  static const double _boxHeight = 56;
-  static const double _hGap = 28;
-  static const double _vGap = 48;
+  static const double _boxWidth = 196;
+  static const double _boxHeight = 74;
+  static const double _hGap = 30;
+  static const double _vGap = 56;
 
   List<LoadModel> _loadsOwnedBy(String nodeMac) =>
       loads.where((load) => load.owningNodeMac == nodeMac).toList();
@@ -53,22 +45,12 @@ class GraphicalTopologyTree extends StatelessWidget {
       height: height,
       child: Stack(
         children: [
-          CustomPaint(
-            size: Size(width, height),
-            painter: _ConnectorPainter(root),
-          ),
+          CustomPaint(size: Size(width, height), painter: _ConnectorPainter(root)),
           ..._buildBoxes(root),
         ],
       ),
     );
 
-    // A SingleChildScrollView left-aligns a child narrower than its
-    // viewport by default, which pins the whole diagram (Central included)
-    // to the left edge on any installation small enough not to need
-    // scrolling. Forcing the scrollable content to be at least as wide as
-    // the viewport and centering inside that keeps Central centered on
-    // screen when it fits, while still scrolling normally once the real
-    // tree grows wider than the viewport.
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -76,7 +58,13 @@ class GraphicalTopologyTree extends StatelessWidget {
           child: SingleChildScrollView(
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: Center(child: diagram),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
+                ),
+                child: Center(child: diagram),
+              ),
             ),
           ),
         );
@@ -84,17 +72,17 @@ class GraphicalTopologyTree extends StatelessWidget {
     );
   }
 
-  /// Assigns every leaf the next free horizontal slot in left-to-right
-  /// order, then centres each parent over the midpoint of its own
-  /// children's slots - the same layout rule every simple top-down org
-  /// chart uses.
-  _LaidOutNode _layoutNode(NodeModel node, {required int depth, required _Cell nextSlot}) {
+  _LaidOutNode _layoutNode(
+    NodeModel node, {
+    required int depth,
+    required _Cell nextSlot,
+  }) {
     final childNodes = <_LaidOutNode>[];
 
     for (final load in _loadsOwnedBy(node.mac)) {
       childNodes.add(
         _LaidOutNode(
-          titleLine1: 'DC Load',
+          titleLine1: 'Load',
           titleLine2: load.name,
           slot: nextSlot.value.toDouble(),
           depth: depth + 1,
@@ -113,14 +101,14 @@ class GraphicalTopologyTree extends StatelessWidget {
       slot = nextSlot.value.toDouble();
       nextSlot.value += 1;
     } else {
-      final first = childNodes.first.slot;
-      final last = childNodes.last.slot;
-      slot = (first + last) / 2;
+      slot = (childNodes.first.slot + childNodes.last.slot) / 2;
     }
 
     return _LaidOutNode(
-      titleLine1: node.role == NodeRole.central ? 'Distribution Board' : 'Smart Node',
-      titleLine2: node.role == NodeRole.central ? 'Central ESP32' : (node.name ?? node.mac),
+      titleLine1: node.role == NodeRole.central ? 'Central node' : 'Smart node',
+      titleLine2: node.role == NodeRole.central
+          ? (node.name ?? 'Central ESP32')
+          : (node.name ?? node.mac),
       slot: slot,
       depth: depth,
       node: node,
@@ -139,51 +127,99 @@ class GraphicalTopologyTree extends StatelessWidget {
   Widget _buildBox(_LaidOutNode node) {
     final left = node.slot * (_boxWidth + _hGap);
     final top = node.depth * (_boxHeight + _vGap);
-    final isLoad = node.load != null || node.node == null;
+    final load = node.load;
+    final physicalNode = node.node;
+    final isLoad = load != null || physicalNode == null;
+    final online = physicalNode?.online;
+    final loadOn = load?.displayState == true;
+    final accent = isLoad
+        ? (loadOn ? AppColors.success : AppColors.primary)
+        : (online == false ? AppColors.error : AppColors.primary);
+
+    final VoidCallback? onTap = physicalNode != null
+        ? (onNodeTap == null ? null : () => onNodeTap!(physicalNode))
+        : (load == null || onLoadTap == null ? null : () => onLoadTap!(load));
 
     return Positioned(
       left: left,
       top: top.toDouble(),
       width: _boxWidth,
       height: _boxHeight,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: node.node != null
-            ? (onNodeTap == null ? null : () => onNodeTap!(node.node!))
-            : (node.load == null || onLoadTap == null
-                  ? null
-                  : () => onLoadTap!(node.load!)),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isLoad ? AppColors.surface : AppColors.surfaceMuted,
-            border: Border.all(color: AppColors.border),
-            borderRadius: BorderRadius.circular(6),
+      child: Material(
+        color: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: BorderSide(
+            color: accent.withValues(alpha: isLoad ? 0.20 : 0.26),
           ),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                node.titleLine1,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          mouseCursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+          hoverColor: accent.withValues(alpha: 0.045),
+          focusColor: accent.withValues(alpha: 0.07),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(
+                    isLoad
+                        ? (loadOn
+                            ? Icons.flash_on_rounded
+                            : Icons.electrical_services_outlined)
+                        : (physicalNode?.role == NodeRole.central
+                            ? Icons.memory_rounded
+                            : Icons.developer_board_outlined),
+                    size: 19,
+                    color: accent,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                node.titleLine2,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        node.titleLine1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textTertiary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        node.titleLine2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.label,
+                      ),
+                    ],
+                  ),
+                ),
+                if (physicalNode != null)
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: physicalNode.online ? AppColors.success : AppColors.error,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -191,8 +227,6 @@ class GraphicalTopologyTree extends StatelessWidget {
   }
 }
 
-/// Mutable counter threaded through the recursive layout so every leaf
-/// across the whole tree gets a unique, ever-increasing horizontal slot.
 class _Cell {
   _Cell(this.value);
   int value;
@@ -247,23 +281,23 @@ class _ConnectorPainter extends CustomPainter {
   static const double _vGap = GraphicalTopologyTree._vGap;
 
   Offset _bottomCenter(_LaidOutNode node) => Offset(
-    node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
-    node.depth * (_boxHeight + _vGap) + _boxHeight,
-  );
+        node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
+        node.depth * (_boxHeight + _vGap) + _boxHeight,
+      );
 
   Offset _topCenter(_LaidOutNode node) => Offset(
-    node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
-    node.depth * (_boxHeight + _vGap),
-  );
+        node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
+        node.depth * (_boxHeight + _vGap),
+      );
 
   @override
   void paint(Canvas canvas, Size size) {
     final linePaint = Paint()
-      ..color = AppColors.border
-      ..strokeWidth = 1.6
+      ..color = AppColors.borderStrong
+      ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
     final arrowPaint = Paint()
-      ..color = AppColors.border
+      ..color = AppColors.borderStrong
       ..style = PaintingStyle.fill;
 
     void drawNode(_LaidOutNode node) {
@@ -273,14 +307,14 @@ class _ConnectorPainter extends CustomPainter {
         final midY = (start.dy + end.dy) / 2;
         final path = Path()
           ..moveTo(start.dx, start.dy)
-          ..cubicTo(start.dx, midY, end.dx, midY, end.dx, end.dy - 6);
+          ..cubicTo(start.dx, midY, end.dx, midY, end.dx, end.dy - 7);
         canvas.drawPath(path, linePaint);
 
-        const arrowSize = 5.0;
+        const arrowSize = 4.5;
         final arrowPath = Path()
           ..moveTo(end.dx, end.dy)
-          ..lineTo(end.dx - arrowSize, end.dy - 6 - arrowSize)
-          ..lineTo(end.dx + arrowSize, end.dy - 6 - arrowSize)
+          ..lineTo(end.dx - arrowSize, end.dy - 7 - arrowSize)
+          ..lineTo(end.dx + arrowSize, end.dy - 7 - arrowSize)
           ..close();
         canvas.drawPath(arrowPath, arrowPaint);
 
