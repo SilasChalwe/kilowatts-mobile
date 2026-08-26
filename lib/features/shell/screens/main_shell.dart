@@ -17,16 +17,16 @@ import '../../history/screens/history_screen.dart';
 import '../../loads/screens/loads_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../../system/screens/system_topology_screen.dart';
-import '../widgets/app_bottom_navigation.dart';
-import 'more_screen.dart';
 
 /// The single authenticated application shell.
 ///
-/// Native mobile uses bottom navigation for four frequent destinations and a
-/// separate More screen. Web never renders that bottom bar: wide web uses a
-/// persistent product sidebar while compact web uses one hamburger drawer.
-/// Installer access adds destinations to the same shell instead of nesting a
-/// second Scaffold around the homeowner application.
+/// Navigation rules:
+/// - Web at desktop width: persistent left sidebar.
+/// - Compact web: one top app bar + hamburger drawer.
+/// - Native mobile/tablet: one top app bar + hamburger drawer.
+///
+/// There is intentionally no bottom navigation bar. Installer access extends
+/// the same destination list instead of nesting a second application shell.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.installerMode = false});
 
@@ -37,7 +37,8 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  final GlobalKey<ScaffoldState> _webScaffoldKey = GlobalKey<ScaffoldState>();
+  final GlobalKey<ScaffoldState> _compactScaffoldKey =
+      GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
   bool _didRequestConnect = false;
 
@@ -126,20 +127,8 @@ class _MainShellState extends State<MainShell> {
     ];
   }
 
-  void _selectWebDestination(int index, {bool closeDrawer = false}) {
+  void _selectDestination(int index, {bool closeDrawer = false}) {
     if (closeDrawer) Navigator.of(context).pop();
-    setState(() => _currentIndex = index);
-  }
-
-  void _handleMobileDestination(int index) {
-    if (index == 4) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MoreScreen(installerMode: widget.installerMode),
-        ),
-      );
-      return;
-    }
     setState(() => _currentIndex = index);
   }
 
@@ -148,38 +137,23 @@ class _MainShellState extends State<MainShell> {
     final destinations = _destinations();
     final safeIndex = _currentIndex < destinations.length ? _currentIndex : 0;
 
-    if (!kIsWeb) {
-      final mobileIndex = safeIndex > 3 ? 0 : safeIndex;
-      return Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: IndexedStack(
-            index: mobileIndex,
-            children: destinations.take(4).map((item) => item.page).toList(),
-          ),
-        ),
-        bottomNavigationBar: AppBottomNavigation(
-          currentIndex: mobileIndex,
-          onTap: _handleMobileDestination,
-        ),
-      );
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= AppBreakpoints.desktop;
-        if (wide) {
+        final usePersistentSidebar =
+            kIsWeb && constraints.maxWidth >= AppBreakpoints.desktop;
+
+        if (usePersistentSidebar) {
           return Scaffold(
             body: SafeArea(
               child: Row(
                 children: [
                   SizedBox(
                     width: 264,
-                    child: _WebNavigationPanel(
+                    child: _NavigationPanel(
                       installerMode: widget.installerMode,
                       destinations: destinations,
                       selectedIndex: safeIndex,
-                      onSelect: (index) => _selectWebDestination(index),
+                      onSelect: _selectDestination,
                     ),
                   ),
                   Expanded(
@@ -195,15 +169,26 @@ class _MainShellState extends State<MainShell> {
         }
 
         return Scaffold(
-          key: _webScaffoldKey,
+          key: _compactScaffoldKey,
           appBar: AppBar(
             backgroundColor: AppColors.surface,
             leading: IconButton(
               tooltip: 'Open navigation',
-              onPressed: () => _webScaffoldKey.currentState?.openDrawer(),
+              onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
               icon: const Icon(Icons.menu_rounded),
             ),
-            title: Text(destinations[safeIndex].label),
+            titleSpacing: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Kilowatts', style: AppTextStyles.label),
+                Text(
+                  destinations[safeIndex].label,
+                  style: AppTextStyles.caption,
+                ),
+              ],
+            ),
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(1),
               child: Divider(height: 1),
@@ -213,12 +198,12 @@ class _MainShellState extends State<MainShell> {
             width: 292,
             backgroundColor: AppColors.sidebar,
             child: SafeArea(
-              child: _WebNavigationPanel(
+              child: _NavigationPanel(
                 installerMode: widget.installerMode,
                 destinations: destinations,
                 selectedIndex: safeIndex,
                 onSelect: (index) =>
-                    _selectWebDestination(index, closeDrawer: true),
+                    _selectDestination(index, closeDrawer: true),
               ),
             ),
           ),
@@ -248,8 +233,8 @@ class _ProductDestination {
   final bool installerOnly;
 }
 
-class _WebNavigationPanel extends StatelessWidget {
-  const _WebNavigationPanel({
+class _NavigationPanel extends StatelessWidget {
+  const _NavigationPanel({
     required this.installerMode,
     required this.destinations,
     required this.selectedIndex,
