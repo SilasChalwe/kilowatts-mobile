@@ -6,7 +6,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 
@@ -112,15 +111,6 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (widget.embedded) ...[
-                    const PageHeader(
-                      eyebrow: 'Installation',
-                      title: 'Operations',
-                      subtitle:
-                          'Run Best-First optimization and control its automatic cadence.',
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                  ],
                   ResponsiveCardGrid(
                     minCardWidth: 360,
                     maxColumns: 2,
