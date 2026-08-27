@@ -61,9 +61,6 @@ class AppState {
     const [],
   );
 
-  /// Timestamped history survives application restarts. Incoming MQTT packets
-  /// are sampled into 15-second buckets and older data is compacted while
-  /// preserving local minima/maxima so trend shape is not lost.
   final ValueNotifier<List<TelemetryPoint>> socHistory = ValueNotifier(const []);
   final ValueNotifier<List<TelemetryPoint>> batteryPowerHistory = ValueNotifier(
     const [],
@@ -132,8 +129,6 @@ class AppState {
     final next = [...notifier.value];
     if (next.isNotEmpty &&
         now.difference(next.last.timestamp) < _historySampleInterval) {
-      // Keep the most recent reading in the current sampling bucket instead of
-      // writing every high-frequency MQTT packet to persistent storage.
       next[next.length - 1] = TelemetryPoint(timestamp: now, value: value);
     } else {
       next.add(TelemetryPoint(timestamp: now, value: value));
@@ -155,15 +150,15 @@ class AppState {
 
     if (retained.length <= _maxHistoryPoints) return retained;
 
-    // Reduce older high-density data by preserving the minimum and maximum in
-    // each chronological bucket. This keeps spikes/dips visible while bounding
-    // SharedPreferences storage and chart rendering cost.
     final targetBuckets = _maxHistoryPoints ~/ 2;
     final bucketSize = (retained.length / targetBuckets).ceil();
     final compacted = <TelemetryPoint>[];
 
     for (var start = 0; start < retained.length; start += bucketSize) {
-      final end = (start + bucketSize).clamp(0, retained.length);
+      final candidateEnd = start + bucketSize;
+      final end = candidateEnd < retained.length
+          ? candidateEnd
+          : retained.length;
       final bucket = retained.sublist(start, end);
       if (bucket.length == 1) {
         compacted.add(bucket.first);
