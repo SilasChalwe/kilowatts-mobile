@@ -142,8 +142,12 @@ class _TelemetryLinePainter extends CustomPainter {
 
     Offset positionFor(TelemetryPoint point) {
       final time = point.timestamp.millisecondsSinceEpoch.toDouble();
-      final xRatio = ((time - firstTime) / (lastTime - firstTime)).clamp(0.0, 1.0);
-      final yRatio = ((point.value - minY) / (maxY - minY)).clamp(0.0, 1.0);
+      final xRatio = ((time - firstTime) / (lastTime - firstTime))
+          .clamp(0.0, 1.0)
+          .toDouble();
+      final yRatio = ((point.value - minY) / (maxY - minY))
+          .clamp(0.0, 1.0)
+          .toDouble();
       return Offset(
         plot.left + plot.width * xRatio,
         plot.bottom - plot.height * yRatio,
@@ -167,7 +171,8 @@ class _TelemetryLinePainter extends CustomPainter {
     );
 
     if (positions.length <= 30) {
-      final markerPaint = Paint()..color = AppColors.primary.withValues(alpha: 0.55);
+      final markerPaint = Paint()
+        ..color = AppColors.primary.withValues(alpha: 0.55);
       for (final point in positions.take(positions.length - 1)) {
         canvas.drawCircle(point, 2.2, markerPaint);
       }
