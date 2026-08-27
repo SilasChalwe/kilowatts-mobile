@@ -42,7 +42,7 @@ class TrendChartCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _formatLatest(latest.value),
+                  _formatValue(latest.value),
                   style: AppTextStyles.sectionTitle,
                 ),
                 Text('Latest', style: AppTextStyles.caption),
@@ -78,25 +78,65 @@ class TrendChartCard extends StatelessWidget {
                 ],
               ),
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TelemetryLineChart(
-                  points: ordered,
-                  unit: unit,
-                  minimumY: minimumY,
-                  maximumY: maximumY,
-                ),
-                if (caption != null) ...[
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(caption!, style: AppTextStyles.caption),
-                ],
-              ],
-            ),
+          : _chartBody(ordered),
     );
   }
 
-  String _formatLatest(double value) {
+  Widget _chartBody(List<TelemetryPoint> ordered) {
+    final values = ordered.map((point) => point.value).toList(growable: false);
+    final minimum = values.reduce((a, b) => a < b ? a : b);
+    final maximum = values.reduce((a, b) => a > b ? a : b);
+    final average = values.reduce((a, b) => a + b) / values.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TelemetryLineChart(
+          points: ordered,
+          unit: unit,
+          minimumY: minimumY,
+          maximumY: maximumY,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: _stat('Min', minimum)),
+              Expanded(child: _stat('Average', average)),
+              Expanded(child: _stat('Max', maximum)),
+            ],
+          ),
+        ),
+        if (caption != null) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(caption!, style: AppTextStyles.caption),
+        ],
+      ],
+    );
+  }
+
+  Widget _stat(String label, double value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: AppTextStyles.caption),
+        const SizedBox(height: 2),
+        Text(_formatValue(value), style: AppTextStyles.label),
+      ],
+    );
+  }
+
+  String _formatValue(double value) {
     final abs = value.abs();
     final decimals = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
     final text = value.toStringAsFixed(decimals);
