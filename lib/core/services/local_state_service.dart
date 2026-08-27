@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/telemetry_point.dart';
+
 /// Local, on-device persistence only. Live embedded-system state always comes
 /// from MQTT; locally cached installer configuration is labelled as such in
 /// the UI and is never presented as fresh Central telemetry.
@@ -12,6 +14,10 @@ class LocalStateService {
   static const _lastSyncedAtKey = 'kilowatts.last_synced_at';
   static const _nodeNameOverridesKey = 'kilowatts.node_name_overrides';
   static const _alertsKey = 'kilowatts.alerts';
+  static const _socHistoryKey = 'kilowatts.history.soc';
+  static const _batteryPowerHistoryKey = 'kilowatts.history.battery_power';
+  static const _activeLoadPowerHistoryKey =
+      'kilowatts.history.active_load_power';
   static const _installerSafetyConfigKey = 'kilowatts.installer.safety_config';
   static const _installerBatteryConfigKey = 'kilowatts.installer.battery_config';
   static const _installerOptimizerIntervalKey =
@@ -108,6 +114,24 @@ class LocalStateService {
     }
   }
 
+  Future<void> cacheSocHistory(List<TelemetryPoint> points) =>
+      _writeTelemetryHistory(_socHistoryKey, points);
+
+  Future<void> cacheBatteryPowerHistory(List<TelemetryPoint> points) =>
+      _writeTelemetryHistory(_batteryPowerHistoryKey, points);
+
+  Future<void> cacheActiveLoadPowerHistory(List<TelemetryPoint> points) =>
+      _writeTelemetryHistory(_activeLoadPowerHistoryKey, points);
+
+  Future<List<TelemetryPoint>> readSocHistory() =>
+      _readTelemetryHistory(_socHistoryKey);
+
+  Future<List<TelemetryPoint>> readBatteryPowerHistory() =>
+      _readTelemetryHistory(_batteryPowerHistoryKey);
+
+  Future<List<TelemetryPoint>> readActiveLoadPowerHistory() =>
+      _readTelemetryHistory(_activeLoadPowerHistoryKey);
+
   Future<void> cacheInstallerSafetyConfig(Map<String, dynamic> values) async {
     await _writeInstallerSnapshot(_installerSafetyConfigKey, values);
   }
@@ -134,6 +158,39 @@ class LocalStateService {
   Future<int?> readInstallerOptimizerIntervalSeconds() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_installerOptimizerIntervalKey);
+  }
+
+  Future<void> _writeTelemetryHistory(
+    String key,
+    List<TelemetryPoint> points,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      key,
+      jsonEncode(points.map((point) => point.toJson()).toList()),
+    );
+  }
+
+  Future<List<TelemetryPoint>> _readTelemetryHistory(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null) return const [];
+    try {
+      final decoded = jsonDecode(raw) as List;
+      return decoded
+          .whereType<Map>()
+          .map((value) {
+            try {
+              return TelemetryPoint.fromJson(value.cast<String, dynamic>());
+            } catch (_) {
+              return null;
+            }
+          })
+          .whereType<TelemetryPoint>()
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _writeInstallerSnapshot(
