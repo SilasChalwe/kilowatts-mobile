@@ -1,147 +1,135 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
+import '../../../core/models/telemetry_point.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/empty_state.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/trend_chart_card.dart';
-import '../../alerts/models/alert_model.dart';
-import '../../alerts/widgets/alert_card.dart';
 
-/// Session reports only. The current firmware does not expose historical
-/// backfill, so this screen never pretends that older data exists.
-class HistoryScreen extends StatelessWidget {
+enum _HistoryRange {
+  oneHour('1h', Duration(hours: 1)),
+  sixHours('6h', Duration(hours: 6)),
+  oneDay('24h', Duration(hours: 24)),
+  sevenDays('7d', Duration(days: 7));
+
+  const _HistoryRange(this.label, this.duration);
+
+  final String label;
+  final Duration duration;
+}
+
+class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, this.embedded = false});
 
   final bool embedded;
 
-  Widget _usage(BuildContext context) {
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  _HistoryRange _range = _HistoryRange.oneDay;
+
+  List<TelemetryPoint> _withinRange(List<TelemetryPoint> points) {
+    final cutoff = DateTime.now().subtract(_range.duration);
+    return points
+        .where((point) => !point.timestamp.isBefore(cutoff))
+        .toList(growable: false);
+  }
+
+  Widget _rangeSelector() {
+    return SegmentedButton<_HistoryRange>(
+      segments: [
+        for (final range in _HistoryRange.values)
+          ButtonSegment<_HistoryRange>(
+            value: range,
+            label: Text(range.label),
+          ),
+      ],
+      selected: {_range},
+      showSelectedIcon: false,
+      onSelectionChanged: (selection) {
+        if (selection.isEmpty) return;
+        setState(() => _range = selection.first);
+      },
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final appState = AppStateScope.of(context);
-    return ValueListenableBuilder<List<double>>(
-      valueListenable: appState.socSamples,
-      builder: (context, socSamples, _) {
-        return ValueListenableBuilder<List<double>>(
-          valueListenable: appState.activeLoadPowerSamples,
-          builder: (context, powerSamples, _) {
-            return ListView(
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        appState.socHistory,
+        appState.activeLoadPowerHistory,
+      ]),
+      builder: (context, _) {
+        final soc = _withinRange(appState.socHistory.value);
+        final activePower = _withinRange(appState.activeLoadPowerHistory.value);
+
+        return SingleChildScrollView(
+          child: ResponsiveContent(
+            maxWidth: 1280,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ResponsiveContent(
-                  child: ResponsiveCardGrid(
-                    minCardWidth: 420,
-                    maxColumns: 2,
-                    children: [
-                      TrendChartCard(
-                        title: 'Battery state of charge',
-                        values: socSamples,
-                        caption: 'State of charge (%) · this session',
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.sm,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _rangeSelector(),
+                    Text(
+                      'Stored locally · rolling 7-day history',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.textSecondary,
                       ),
-                      TrendChartCard(
-                        title: 'Active load power',
-                        values: powerSamples,
-                        caption: 'Fixed ON + selected automatic load power (W)',
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                ResponsiveCardGrid(
+                  minCardWidth: 300,
+                  maxColumns: 2,
+                  children: [
+                    TrendChartCard(
+                      title: 'Battery state of charge',
+                      points: soc,
+                      unit: '%',
+                      minimumY: 0,
+                      maximumY: 100,
+                      caption:
+                          'Battery reserve over ${_range.label}. The newest reading is highlighted.',
+                    ),
+                    TrendChartCard(
+                      title: 'Active load power',
+                      points: activePower,
+                      unit: 'W',
+                      minimumY: 0,
+                      caption:
+                          'Fixed ON + selected automatic load power over ${_range.label}.',
+                    ),
+                  ],
                 ),
               ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _events(BuildContext context) {
-    final appState = AppStateScope.of(context);
-    return ValueListenableBuilder<List<AlertModel>>(
-      valueListenable: appState.alerts,
-      builder: (context, events, _) {
-        if (events.isEmpty) {
-          return const EmptyState(
-            icon: Icons.event_note_outlined,
-            title: 'No events this session',
-          );
-        }
-
-        return ListView(
-          children: [
-            ResponsiveContent(
-              maxWidth: 980,
-              child: Column(
-                children: [
-                  for (var index = 0; index < events.length; index++) ...[
-                    AlertCard(alert: events[index]),
-                    if (index != events.length - 1)
-                      const SizedBox(height: AppSpacing.sm),
-                  ],
-                ],
-              ),
             ),
-          ],
+          ),
         );
       },
     );
-  }
-
-  Widget _tabs(BuildContext context) {
-    return TabBarView(children: [_usage(context), _events(context)]);
   }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: embedded
-          ? Material(
-              color: Colors.transparent,
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    ResponsiveContent(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.pageDesktop,
-                        AppSpacing.lg,
-                        AppSpacing.pageDesktop,
-                        0,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceMuted,
-                            borderRadius: BorderRadius.circular(AppRadius.md),
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: const SizedBox(
-                            width: 280,
-                            child: TabBar(
-                              dividerColor: Colors.transparent,
-                              indicatorSize: TabBarIndicatorSize.tab,
-                              tabs: [
-                                Tab(text: 'Usage'),
-                                Tab(text: 'Events'),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Expanded(child: _tabs(context)),
-                  ],
-                ),
-              ),
-            )
-          : Scaffold(
-              appBar: AppBar(
-                title: const Text('Reports'),
-                bottom: const TabBar(
-                  tabs: [Tab(text: 'Usage'), Tab(text: 'Events')],
-                ),
-              ),
-              body: SafeArea(child: _tabs(context)),
-            ),
+    final body = SafeArea(child: _content(context));
+    if (widget.embedded) {
+      return Material(color: Colors.transparent, child: body);
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Reports')),
+      body: body,
     );
   }
 }
