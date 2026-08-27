@@ -53,7 +53,7 @@ class TrendChartCard extends StatelessWidget {
       child: ordered.length < 2
           ? Container(
               width: double.infinity,
-              height: chartHeight < 160 ? 160 : chartHeight,
+              height: chartHeight < 160.0 ? 160.0 : chartHeight,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: AppColors.surfaceMuted,
