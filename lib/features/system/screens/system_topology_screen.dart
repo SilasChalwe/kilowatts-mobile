@@ -5,7 +5,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/metric_card.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../loads/models/load_model.dart';
@@ -38,8 +37,6 @@ class SystemTopologyScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const PageHeader(title: 'System'),
-                        const SizedBox(height: AppSpacing.lg),
                         if (!hasTopology)
                           const EmptyState(
                             icon: Icons.hub_outlined,
