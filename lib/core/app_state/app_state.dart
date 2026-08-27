@@ -12,6 +12,7 @@ import '../../features/setup/models/setup_session.dart';
 import '../../features/system/models/system_state_model.dart';
 import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
+import '../models/telemetry_point.dart';
 import '../services/command_outcome.dart' show CommandOutcome;
 import '../services/local_state_service.dart';
 import '../services/mqtt_config.dart';
@@ -21,8 +22,11 @@ export '../services/command_outcome.dart';
 export '../services/mqtt_config.dart';
 export '../services/mqtt_service.dart' show MqttConnectionStatus;
 
-const _maxSessionSamples = 60;
 const _maxStoredAlerts = 100;
+const _historyRetention = Duration(days: 7);
+const _historySampleInterval = Duration(seconds: 15);
+const _historyPersistDelay = Duration(seconds: 15);
+const _maxHistoryPoints = 4096;
 
 /// Shared application state for both homeowner and installer experiences.
 class AppState {
@@ -43,6 +47,7 @@ class AppState {
   final LocalStateService _localState;
   final AccessControlService _accessControlService;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  Timer? _historyPersistTimer;
 
   final ValueNotifier<MqttConnectionStatus> connectionStatus = ValueNotifier(
     MqttConnectionStatus.disconnected,
@@ -56,13 +61,15 @@ class AppState {
     const [],
   );
 
-  final ValueNotifier<List<double>> socSamples = ValueNotifier(const []);
-  final ValueNotifier<List<double>> batteryPowerSamples = ValueNotifier(
+  /// Timestamped history survives application restarts. Incoming MQTT packets
+  /// are sampled into 15-second buckets and older data is compacted while
+  /// preserving local minima/maxima so trend shape is not lost.
+  final ValueNotifier<List<TelemetryPoint>> socHistory = ValueNotifier(const []);
+  final ValueNotifier<List<TelemetryPoint>> batteryPowerHistory = ValueNotifier(
     const [],
   );
-  final ValueNotifier<List<double>> activeLoadPowerSamples = ValueNotifier(
-    const [],
-  );
+  final ValueNotifier<List<TelemetryPoint>> activeLoadPowerHistory =
+      ValueNotifier(const []);
 
   bool get isSystemStateLive =>
       connectionStatus.value == MqttConnectionStatus.connected &&
@@ -70,10 +77,8 @@ class AppState {
       DateTime.now().difference(lastLiveSystemUpdate.value!) <
           AppConstants.staleDataThreshold;
 
-  /// Firebase authentication changes used by [AuthGate].
   Stream<User?> get userChanges => authService.userChanges;
 
-  /// Resolves the signed-in account to its Kilowatts role/installation.
   Future<InstallationAccess> resolveCurrentAccess() =>
       _accessControlService.resolve(currentUser);
 
@@ -89,9 +94,12 @@ class AppState {
       _mqtt.systemStateStream.listen((state) {
         systemState.value = state;
         lastLiveSystemUpdate.value = DateTime.now();
-        _appendSample(socSamples, state.batterySocPercent);
-        _appendSample(batteryPowerSamples, state.batteryPowerW);
-        _appendSample(activeLoadPowerSamples, state.estimatedTotalLoadPowerW);
+        _appendHistoryPoint(socHistory, state.batterySocPercent);
+        _appendHistoryPoint(batteryPowerHistory, state.batteryPowerW);
+        _appendHistoryPoint(
+          activeLoadPowerHistory,
+          state.estimatedTotalLoadPowerW,
+        );
       }),
     );
     _subscriptions.add(
@@ -114,12 +122,104 @@ class AppState {
     );
   }
 
-  void _appendSample(ValueNotifier<List<double>> notifier, double? value) {
-    if (value == null) return;
-    final next = [...notifier.value, value];
-    notifier.value = next.length > _maxSessionSamples
-        ? next.sublist(next.length - _maxSessionSamples)
-        : next;
+  void _appendHistoryPoint(
+    ValueNotifier<List<TelemetryPoint>> notifier,
+    double? value,
+  ) {
+    if (value == null || !value.isFinite) return;
+
+    final now = DateTime.now();
+    final next = [...notifier.value];
+    if (next.isNotEmpty &&
+        now.difference(next.last.timestamp) < _historySampleInterval) {
+      // Keep the most recent reading in the current sampling bucket instead of
+      // writing every high-frequency MQTT packet to persistent storage.
+      next[next.length - 1] = TelemetryPoint(timestamp: now, value: value);
+    } else {
+      next.add(TelemetryPoint(timestamp: now, value: value));
+    }
+
+    notifier.value = _compactHistory(next, now);
+    _scheduleHistoryPersist();
+  }
+
+  List<TelemetryPoint> _compactHistory(
+    List<TelemetryPoint> input,
+    DateTime now,
+  ) {
+    final cutoff = now.subtract(_historyRetention);
+    final retained = input
+        .where((point) => !point.timestamp.isBefore(cutoff))
+        .toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    if (retained.length <= _maxHistoryPoints) return retained;
+
+    // Reduce older high-density data by preserving the minimum and maximum in
+    // each chronological bucket. This keeps spikes/dips visible while bounding
+    // SharedPreferences storage and chart rendering cost.
+    final targetBuckets = _maxHistoryPoints ~/ 2;
+    final bucketSize = (retained.length / targetBuckets).ceil();
+    final compacted = <TelemetryPoint>[];
+
+    for (var start = 0; start < retained.length; start += bucketSize) {
+      final end = (start + bucketSize).clamp(0, retained.length);
+      final bucket = retained.sublist(start, end);
+      if (bucket.length == 1) {
+        compacted.add(bucket.first);
+        continue;
+      }
+
+      var minimum = bucket.first;
+      var maximum = bucket.first;
+      for (final point in bucket.skip(1)) {
+        if (point.value < minimum.value) minimum = point;
+        if (point.value > maximum.value) maximum = point;
+      }
+
+      if (identical(minimum, maximum)) {
+        compacted.add(bucket.last);
+      } else if (minimum.timestamp.isBefore(maximum.timestamp)) {
+        compacted
+          ..add(minimum)
+          ..add(maximum);
+      } else {
+        compacted
+          ..add(maximum)
+          ..add(minimum);
+      }
+    }
+
+    return compacted.length <= _maxHistoryPoints
+        ? compacted
+        : compacted.sublist(compacted.length - _maxHistoryPoints);
+  }
+
+  List<TelemetryPoint> _mergeHistory(
+    List<TelemetryPoint> cached,
+    List<TelemetryPoint> live,
+  ) {
+    final byTime = <int, TelemetryPoint>{};
+    for (final point in [...cached, ...live]) {
+      byTime[point.timestamp.millisecondsSinceEpoch] = point;
+    }
+    return _compactHistory(byTime.values.toList(), DateTime.now());
+  }
+
+  void _scheduleHistoryPersist() {
+    if (_historyPersistTimer?.isActive ?? false) return;
+    _historyPersistTimer = Timer(
+      _historyPersistDelay,
+      () => unawaited(_persistTelemetryHistory()),
+    );
+  }
+
+  Future<void> _persistTelemetryHistory() async {
+    await Future.wait([
+      _localState.cacheSocHistory(socHistory.value),
+      _localState.cacheBatteryPowerHistory(batteryPowerHistory.value),
+      _localState.cacheActiveLoadPowerHistory(activeLoadPowerHistory.value),
+    ]);
   }
 
   Future<void> _loadCachedSnapshot() async {
@@ -134,6 +234,21 @@ class AppState {
     if (cachedAlerts != null && alerts.value.isEmpty) {
       alerts.value = cachedAlerts.map(AlertModel.fromJson).toList();
     }
+
+    final histories = await Future.wait<List<TelemetryPoint>>([
+      _localState.readSocHistory(),
+      _localState.readBatteryPowerHistory(),
+      _localState.readActiveLoadPowerHistory(),
+    ]);
+    socHistory.value = _mergeHistory(histories[0], socHistory.value);
+    batteryPowerHistory.value = _mergeHistory(
+      histories[1],
+      batteryPowerHistory.value,
+    );
+    activeLoadPowerHistory.value = _mergeHistory(
+      histories[2],
+      activeLoadPowerHistory.value,
+    );
   }
 
   Future<void> _persistAlerts() =>
@@ -326,6 +441,8 @@ class AppState {
   }
 
   void dispose() {
+    _historyPersistTimer?.cancel();
+    unawaited(_persistTelemetryHistory());
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
@@ -336,8 +453,8 @@ class AppState {
     loads.dispose();
     alerts.dispose();
     installerNodes.dispose();
-    socSamples.dispose();
-    batteryPowerSamples.dispose();
-    activeLoadPowerSamples.dispose();
+    socHistory.dispose();
+    batteryPowerHistory.dispose();
+    activeLoadPowerHistory.dispose();
   }
 }
