@@ -21,6 +21,9 @@ class StatusBadge extends StatelessWidget {
 
   final String label;
   final StatusTone tone;
+
+  /// Kept for source compatibility. When enabled the badge now shows a
+  /// tone-specific icon instead of a colour-only dot.
   final bool showDot;
 
   Color get _color {
@@ -38,37 +41,55 @@ class StatusBadge extends StatelessWidget {
     }
   }
 
+  IconData get _icon {
+    switch (tone) {
+      case StatusTone.positive:
+        return Icons.check_circle_outline_rounded;
+      case StatusTone.negative:
+        return Icons.cancel_outlined;
+      case StatusTone.warning:
+        return Icons.warning_amber_rounded;
+      case StatusTone.info:
+        return Icons.info_outline_rounded;
+      case StatusTone.neutral:
+        return Icons.remove_circle_outline_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = _color;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: 5,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showDot) ...[
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: AppSpacing.xxs),
-          ],
-          Text(
-            label,
-            style: AppTextStyles.caption.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+    return Semantics(
+      container: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 5,
           ),
-        ],
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            border: Border.all(color: color.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showDot) ...[
+                Icon(_icon, size: 13, color: color),
+                const SizedBox(width: AppSpacing.xxs),
+              ],
+              Text(
+                label,
+                style: AppTextStyles.caption.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
