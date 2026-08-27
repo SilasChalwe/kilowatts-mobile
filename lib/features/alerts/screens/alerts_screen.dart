@@ -2,20 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/responsive_content.dart';
+import '../../../core/widgets/section_card.dart';
 import '../models/alert_model.dart';
 import '../widgets/alert_card.dart';
 
 enum _AlertFilter { all, critical, warning, info }
 
-/// Alerts arrive one at a time on `kilowatts/v1/events` — there is no
-/// "history of past alerts" topic, so this list only ever holds what has
-/// streamed in since the device was first connected (accumulated centrally
-/// in [AppState.alerts], not by this screen, and cached on-device via
-/// LocalStateService.cacheAlerts so it survives an app restart).
-/// Acknowledgement is a local, on-device convenience; there is no broker
-/// ack-back channel — Central has no concept of alert IDs to acknowledge.
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
 
@@ -31,13 +25,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
       case _AlertFilter.all:
         return alerts;
       case _AlertFilter.critical:
-        return alerts
-            .where((a) => a.severity == AlertSeverity.critical)
-            .toList();
+        return alerts.where((a) => a.severity == AlertSeverity.critical).toList();
       case _AlertFilter.warning:
-        return alerts
-            .where((a) => a.severity == AlertSeverity.warning)
-            .toList();
+        return alerts.where((a) => a.severity == AlertSeverity.warning).toList();
       case _AlertFilter.info:
         return alerts.where((a) => a.severity == AlertSeverity.info).toList();
     }
@@ -48,63 +38,73 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final appState = AppStateScope.of(context);
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Text('Alerts', style: AppTextStyles.title),
-                const Spacer(),
-                TextButton(
-                  onPressed: appState.acknowledgeAllAlerts,
-                  child: const Text('Mark all read'),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  for (final filter in _AlertFilter.values) ...[
-                    ChoiceChip(
-                      label: Text(_label(filter)),
-                      selected: _filter == filter,
-                      onSelected: (_) => setState(() => _filter = filter),
+      child: ValueListenableBuilder<List<AlertModel>>(
+        valueListenable: appState.alerts,
+        builder: (context, alerts, _) {
+          final filtered = _apply(alerts);
+
+          return ListView(
+            children: [
+              ResponsiveContent(
+                maxWidth: 1100,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (alerts.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: appState.acknowledgeAllAlerts,
+                          icon: const Icon(Icons.done_all_rounded, size: 18),
+                          label: const Text('Mark all read'),
+                        ),
+                      ),
+                    if (alerts.isNotEmpty)
+                      const SizedBox(height: AppSpacing.md),
+                    SectionCard(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      child: Wrap(
+                        spacing: AppSpacing.xs,
+                        runSpacing: AppSpacing.xs,
+                        children: [
+                          for (final filter in _AlertFilter.values)
+                            ChoiceChip(
+                              label: Text(_label(filter)),
+                              selected: _filter == filter,
+                              onSelected: (_) => setState(() => _filter = filter),
+                            ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: AppSpacing.xs),
+                    const SizedBox(height: AppSpacing.md),
+                    if (filtered.isEmpty)
+                      EmptyState(
+                        icon: alerts.isEmpty
+                            ? Icons.notifications_none_rounded
+                            : Icons.filter_alt_off_outlined,
+                        title: alerts.isEmpty
+                            ? 'All clear'
+                            : 'No alerts in this category',
+                        message: alerts.isEmpty
+                            ? null
+                            : 'Choose another severity filter.',
+                      )
+                    else
+                      Column(
+                        children: [
+                          for (var index = 0; index < filtered.length; index++) ...[
+                            AlertCard(alert: filtered[index]),
+                            if (index != filtered.length - 1)
+                              const SizedBox(height: AppSpacing.sm),
+                          ],
+                        ],
+                      ),
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Expanded(
-              child: ValueListenableBuilder<List<AlertModel>>(
-                valueListenable: appState.alerts,
-                builder: (context, alerts, _) {
-                  final filtered = _apply(alerts);
-                  if (filtered.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.notifications_off_outlined,
-                      title: 'No Alerts',
-                      message: 'System alerts will appear here as they happen.',
-                    );
-                  }
-                  return ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (context, index) =>
-                        AlertCard(alert: filtered[index]),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -118,7 +118,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       case _AlertFilter.warning:
         return 'Warning';
       case _AlertFilter.info:
-        return 'Info';
+        return 'Information';
     }
   }
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/metric_card.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../loads/models/load_model.dart';
 import '../../system/models/topology_model.dart';
 
+/// Count-only load summary. Power values are intentionally kept in
+/// [PowerSummary] so the dashboard does not duplicate the same concept under
+/// multiple cards.
 class LoadSummary extends StatelessWidget {
   const LoadSummary({required this.loads, required this.topology, super.key});
 
@@ -13,25 +16,28 @@ class LoadSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeLoads = loads.where((l) => l.displayState == true).length;
-    final onlineNodes = topology.smartNodes.where((n) => n.online).length;
+    final activeLoads = loads.where((load) => load.displayState == true).length;
+    final fixedLoads = loads.where((load) => load.mode == LoadMode.fixed).length;
+    final automaticLoads = loads.where((load) => load.mode == LoadMode.auto).length;
 
-    return Row(
+    return ResponsiveCardGrid(
+      minCardWidth: 165,
+      maxColumns: 3,
       children: [
-        Expanded(
-          child: MetricCard(
-            label: 'Loads On',
-            value: '$activeLoads',
-            icon: Icons.flash_on_outlined,
-          ),
+        MetricCard(
+          label: 'Loads on',
+          value: '$activeLoads',
+          icon: Icons.flash_on_outlined,
         ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: MetricCard(
-            label: 'Nodes Online',
-            value: '$onlineNodes/${topology.smartNodes.length}',
-            icon: Icons.developer_board_outlined,
-          ),
+        MetricCard(
+          label: 'Fixed loads',
+          value: '$fixedLoads',
+          icon: Icons.push_pin_outlined,
+        ),
+        MetricCard(
+          label: 'Automatic loads',
+          value: '$automaticLoads',
+          icon: Icons.auto_mode_outlined,
         ),
       ],
     );

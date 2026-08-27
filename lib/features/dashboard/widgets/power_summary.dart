@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/metric_card.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../system/models/system_state_model.dart';
 
+/// Dashboard power summary.
+///
+/// The firmware publishes FIXED_ON power and selected AUTO power separately.
+/// Active load power is their sum. The old "Committed power" metric was
+/// removed because it was sourced from the exact same FIXED_ON value and
+/// therefore duplicated the fixed-load metric under another name.
 class PowerSummary extends StatelessWidget {
   const PowerSummary({required this.state, super.key});
 
@@ -12,48 +18,34 @@ class PowerSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return ResponsiveCardGrid(
+      minCardWidth: 165,
+      maxColumns: 2,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Available Power',
-                value: Formatters.power(state.availablePowerW),
-                icon: Icons.bolt_outlined,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Committed Power',
-                value: Formatters.power(state.committedPowerW),
-                icon: Icons.power_outlined,
-              ),
-            ),
-          ],
+        MetricCard(
+          label: 'Active load power',
+          value: Formatters.power(state.estimatedTotalLoadPowerW),
+          icon: Icons.electric_meter_outlined,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Fixed Loads',
-                value: Formatters.power(state.fixedLoadPowerW),
-                icon: Icons.push_pin_outlined,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Auto Loads',
-                value: Formatters.power(state.autoLoadPowerW),
-                icon: Icons.auto_mode_outlined,
-              ),
-            ),
-          ],
+        MetricCard(
+          label: 'Automatic power budget',
+          value: Formatters.power(state.availablePowerW),
+          icon: Icons.bolt_outlined,
+        ),
+        MetricCard(
+          label: 'Fixed load power',
+          value: Formatters.power(state.fixedLoadPowerW),
+          icon: Icons.push_pin_outlined,
+        ),
+        MetricCard(
+          label: 'Automatic load power',
+          value: Formatters.power(state.autoLoadPowerW),
+          icon: Icons.auto_mode_outlined,
+        ),
+        MetricCard(
+          label: 'Remaining auto budget',
+          value: Formatters.power(state.remainingPowerW),
+          icon: Icons.battery_saver_outlined,
         ),
       ],
     );

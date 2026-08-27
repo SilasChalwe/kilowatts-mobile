@@ -1,9 +1,9 @@
 {
-  "name": "Kilowatts Installer Console",
+  "name": "Kilowatts Energy Management",
   "short_name": "Kilowatts",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#f5f7f8",
   "theme_color": "#0f7b51",
-  "description": "Installer configuration and monitoring console for Kilowatts."
+  "description": "Connected battery monitoring, load prioritisation, system control, and installer management for Kilowatts installations."
 }

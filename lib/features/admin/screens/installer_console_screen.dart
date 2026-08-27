@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
+import '../../../core/services/command_outcome.dart';
 import '../../../core/services/mqtt_config.dart';
 import '../../../core/services/mqtt_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -8,17 +9,18 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../alerts/screens/alerts_screen.dart';
 import '../../loads/models/load_model.dart';
-import '../../loads/screens/load_details_screen.dart';
-import '../../system/screens/system_topology_screen.dart';
+import '../../loads/widgets/load_configuration_dialog.dart';
 import '../models/installer_node_model.dart';
 import 'installer_configuration_dialogs.dart';
 
 class InstallerConsoleScreen extends StatefulWidget {
-  const InstallerConsoleScreen({super.key});
+  const InstallerConsoleScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<InstallerConsoleScreen> createState() => _InstallerConsoleScreenState();
@@ -31,6 +33,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
   bool _loading = true;
   bool _sourceBusy = false;
   bool _initialized = false;
+  final Set<String> _loadsBeingUpdated = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -42,32 +45,73 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
 
   Future<void> _loadSummaries() async {
     final appState = AppStateScope.of(context);
-    final config = await appState.loadMqttConfig();
-    final safety = await appState.readLastInstallerSafetyConfig();
-    final battery = await appState.readLastInstallerBatteryConfig();
+    final values = await Future.wait<dynamic>([
+      appState.loadMqttConfig(),
+      appState.readLastInstallerSafetyConfig(),
+      appState.readLastInstallerBatteryConfig(),
+    ]);
     if (!mounted) return;
     setState(() {
-      _config = config;
-      _lastSafety = safety;
-      _lastBattery = battery;
+      _config = values[0] as MqttConfig;
+      _lastSafety = values[1] as Map<String, dynamic>?;
+      _lastBattery = values[2] as Map<String, dynamic>?;
       _loading = false;
     });
   }
 
-  void _message(String text) {
-    ScaffoldMessenger.of(context)
+  void _message(String text, {bool error = false}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                error
+                    ? Icons.error_outline_rounded
+                    : Icons.check_circle_outline_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(child: Text(text)),
+            ],
+          ),
+          backgroundColor: error ? AppColors.error : AppColors.textPrimary,
+        ),
+      );
   }
 
   Future<void> _editBroker() async {
     final initial = _config ?? const MqttConfig.unconfigured();
     final updated = await showInstallerBrokerDialog(context, initial);
     if (updated == null || !mounted) return;
-    await AppStateScope.of(context).saveMqttConfig(updated);
+
+    final appState = AppStateScope.of(context);
+    await appState.saveMqttConfig(updated);
     if (!mounted) return;
     setState(() => _config = updated);
-    _message('Broker connection saved.');
+
+    final status = appState.connectionStatus.value;
+    switch (status) {
+      case MqttConnectionStatus.connected:
+        _message('Connection saved and connected successfully.');
+      case MqttConnectionStatus.authenticationFailure:
+        _message('Connection saved, but authentication failed.', error: true);
+      case MqttConnectionStatus.tlsFailure:
+        _message('Connection saved, but TLS failed.', error: true);
+      case MqttConnectionStatus.networkFailure:
+        _message('Connection saved, but the broker could not be reached.', error: true);
+      case MqttConnectionStatus.reconnecting:
+        _message('Connection saved. Reconnecting…');
+      case MqttConnectionStatus.connecting:
+        _message('Connection saved. Connecting…');
+      case MqttConnectionStatus.notConfigured:
+        _message('Connection details are incomplete.', error: true);
+      case MqttConnectionStatus.disconnected:
+        _message('Connection saved, but the system is offline.', error: true);
+    }
   }
 
   Future<void> _configureSafety() async {
@@ -78,7 +122,10 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final outcome = await appState.applySafetyConfig(draft);
     if (!mounted) return;
     if (!outcome.isConfirmed) {
-      _message(outcome.message ?? 'Central rejected the safety policy.');
+      _message(
+        outcome.message ?? 'Central rejected the safety policy.',
+        error: true,
+      );
       return;
     }
 
@@ -116,7 +163,10 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     );
     if (!mounted) return;
     if (!outcome.isConfirmed) {
-      _message(outcome.message ?? 'Central rejected the battery configuration.');
+      _message(
+        outcome.message ?? 'Central rejected the battery configuration.',
+        error: true,
+      );
       return;
     }
 
@@ -140,8 +190,9 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     setState(() => _sourceBusy = false);
     _message(
       outcome.isConfirmed
-          ? (simulated ? 'Simulation enabled.' : 'INA219 input enabled.')
+          ? (simulated ? 'Battery simulation enabled.' : 'INA219 input enabled.')
           : outcome.message ?? 'Central rejected the request.',
+      error: !outcome.isConfirmed,
     );
   }
 
@@ -156,8 +207,9 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     if (!mounted) return;
     _message(
       outcome.isConfirmed
-          ? 'Simulation values applied.'
-          : outcome.message ?? 'Central rejected the values.',
+          ? 'Simulated battery readings applied.'
+          : outcome.message ?? 'Central rejected the readings.',
+      error: !outcome.isConfirmed,
     );
   }
 
@@ -173,7 +225,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
         content: SizedBox(
           width: 420,
           child: AppTextField(
-            label: 'Friendly name',
+            label: 'Node name',
             controller: controller,
             hintText: 'Kitchen node',
           ),
@@ -197,18 +249,16 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     controller.dispose();
     if (name == null || !mounted) return;
 
+    final appState = AppStateScope.of(context);
     final outcome = rename
-        ? await AppStateScope.of(
-            context,
-          ).renameNode(nodeMac: node.mac, friendlyName: name)
-        : await AppStateScope.of(
-            context,
-          ).commissionNode(nodeMac: node.mac, friendlyName: name);
+        ? await appState.renameNode(nodeMac: node.mac, friendlyName: name)
+        : await appState.commissionNode(nodeMac: node.mac, friendlyName: name);
     if (!mounted) return;
     _message(
       outcome.isConfirmed
-          ? 'Node configuration applied.'
+          ? (rename ? 'Node renamed.' : 'Node commissioned.')
           : outcome.message ?? 'Node rejected the request.',
+      error: !outcome.isConfirmed,
     );
   }
 
@@ -234,14 +284,14 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final outcome = await AppStateScope.of(
-      context,
-    ).decommissionNode(nodeMac: node.mac);
+
+    final outcome = await AppStateScope.of(context).decommissionNode(nodeMac: node.mac);
     if (!mounted) return;
     _message(
       outcome.isConfirmed
           ? outcome.message ?? 'Node decommissioned.'
           : outcome.message ?? 'Could not decommission node.',
+      error: !outcome.isConfirmed,
     );
   }
 
@@ -253,7 +303,10 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final freePins = node.availableRelayPins
         .where((pin) => !usedPins.contains(pin))
         .toList();
-    if (freePins.isEmpty) return;
+    if (freePins.isEmpty) {
+      _message('No free relay GPIOs are available on this node.', error: true);
+      return;
+    }
 
     final config = await showAddInstallerLoadDialog(
       context,
@@ -261,107 +314,151 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
       freePins: freePins,
     );
     if (config == null || !mounted) return;
+
     final outcome = await AppStateScope.of(context).configureLoad(config);
     if (!mounted) return;
     _message(
       outcome.isConfirmed
-          ? 'Load configured.'
+          ? 'Load added to ${node.displayName}.'
           : outcome.message ?? 'Node rejected the load configuration.',
+      error: !outcome.isConfirmed,
+    );
+  }
+
+  Future<void> _editLoad(LoadModel load) async {
+    if (_loadsBeingUpdated.contains(load.id)) return;
+    final draft = await showLoadConfigurationDialog(context, load: load);
+    if (draft == null || !mounted) return;
+
+    setState(() => _loadsBeingUpdated.add(load.id));
+    final outcome = await AppStateScope.of(context).updateLoadConfiguration(
+      nodeMac: load.owningNodeMac,
+      relayPin: load.relayPin,
+      mode: draft.mode,
+      currentRequestedState: load.requestedState ?? load.confirmedState ?? false,
+      priority: draft.priority,
+      schedule: draft.mode == LoadMode.fixed
+          ? LoadSchedule.disabled
+          : draft.schedule,
+    );
+    if (!mounted) return;
+    setState(() => _loadsBeingUpdated.remove(load.id));
+
+    _message(
+      outcome.status == CommandStatus.confirmed
+          ? '${load.name} configuration updated.'
+          : outcome.message ?? 'Central rejected the load configuration.',
+      error: outcome.status == CommandStatus.failed,
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    final appState = AppStateScope.of(context);
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        appState.connectionStatus,
+        appState.systemState,
+        appState.installerNodes,
+        appState.loads,
+      ]),
+      builder: (context, _) {
+        final nodes = appState.installerNodes.value;
+        final loads = appState.loads.value;
+        InstallerNodeModel? central;
+        for (final node in nodes) {
+          if (node.isCentralNode) {
+            central = node;
+            break;
+          }
+        }
+
+        return ListView(
+          children: [
+            ResponsiveContent(
+              maxWidth: 1320,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ResponsiveCardGrid(
+                    minCardWidth: 330,
+                    maxColumns: 3,
+                    children: [
+                      _brokerCard(appState.connectionStatus.value),
+                      _batteryCard(central),
+                      _safetyCard(),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Nodes & loads', style: AppTextStyles.title),
+                      ),
+                      Text(
+                        '${nodes.length} nodes · ${loads.length} loads',
+                        style: AppTextStyles.caption,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  if (nodes.isEmpty)
+                    const SectionCard(
+                      title: 'No nodes reported',
+                      child: Text(
+                        'Connect Central and wait for node identity reports.',
+                        style: AppTextStyles.caption,
+                      ),
+                    )
+                  else
+                    ResponsiveCardGrid(
+                      minCardWidth: 440,
+                      maxColumns: 2,
+                      children: [
+                        for (final node in nodes)
+                          _nodeCard(
+                            node,
+                            loads
+                                .where((load) => load.owningNodeMac == node.mac)
+                                .toList(),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      final loading = const Center(child: CircularProgressIndicator());
+      if (widget.embedded) {
+        return const Material(color: Colors.transparent, child: loading);
+      }
+      return const Scaffold(body: loading);
     }
 
-    final appState = AppStateScope.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Installer console'),
-        actions: [
-          IconButton(
-            tooltip: 'Topology',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SystemTopologyScreen()),
-            ),
-            icon: const Icon(Icons.account_tree_outlined),
-          ),
-          IconButton(
-            tooltip: 'Activity',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AlertsScreen()),
-            ),
-            icon: const Icon(Icons.notifications_outlined),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-        ],
-      ),
-      body: SafeArea(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([
-            appState.connectionStatus,
-            appState.systemState,
-            appState.installerNodes,
-            appState.loads,
-          ]),
-          builder: (context, _) {
-            final nodes = appState.installerNodes.value;
-            final loads = appState.loads.value;
-            InstallerNodeModel? central;
-            for (final node in nodes) {
-              if (node.isCentralNode) {
-                central = node;
-                break;
-              }
-            }
+    if (widget.embedded) {
+      return Material(
+        color: Colors.transparent,
+        child: SafeArea(child: _content(context)),
+      );
+    }
 
-            return ListView(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              children: [
-                _brokerCard(appState.connectionStatus.value),
-                const SizedBox(height: AppSpacing.md),
-                _batteryCard(central),
-                const SizedBox(height: AppSpacing.md),
-                _safetyCard(),
-                const SizedBox(height: AppSpacing.lg),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text('Nodes & loads', style: AppTextStyles.title),
-                    ),
-                    Text(
-                      '${nodes.length} nodes · ${loads.length} loads',
-                      style: AppTextStyles.caption,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                if (nodes.isEmpty)
-                  const SectionCard(child: Text('No nodes reported.'))
-                else
-                  for (final node in nodes) ...[
-                    _nodeCard(
-                      node,
-                      loads
-                          .where((load) => load.owningNodeMac == node.mac)
-                          .toList(),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                  ],
-              ],
-            );
-          },
-        ),
-      ),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Installer console')),
+      body: SafeArea(child: _content(context)),
     );
   }
 
   Widget _brokerCard(MqttConnectionStatus status) {
     final config = _config!;
     return SectionCard(
-      title: 'Broker connection',
+      title: 'Connection',
       trailing: StatusBadge(
         label: _connectionLabel(status),
         tone: _connectionTone(status),
@@ -371,44 +468,29 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               children: [
                 SectionRow(label: 'Host', value: config.host),
                 SectionRow(label: 'Port', value: '${config.port}'),
-                SectionRow(
-                  label: 'WebSocket path',
-                  value: config.webSocketPath,
-                ),
-                SectionRow(
-                  label: 'Topic namespace',
-                  value: config.topicNamespace,
-                ),
+                SectionRow(label: 'Namespace', value: config.topicNamespace),
                 SectionRow(
                   label: 'Security',
-                  value: config.useTls ? 'TLS enabled' : 'TLS off',
-                ),
-                SectionRow(
-                  label: 'Account',
-                  value: config.username ?? 'No username',
+                  value: config.useTls ? 'TLS' : 'No TLS',
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Align(
                   alignment: Alignment.centerRight,
                   child: OutlinedButton.icon(
                     onPressed: _editBroker,
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit connection'),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
                   ),
                 ),
               ],
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('No broker connection is saved.'),
-                const SizedBox(height: AppSpacing.md),
-                FilledButton.icon(
-                  onPressed: _editBroker,
-                  icon: const Icon(Icons.add_link_outlined),
-                  label: const Text('Add connection'),
-                ),
-              ],
+          : Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _editBroker,
+                icon: const Icon(Icons.add_link_outlined, size: 18),
+                label: const Text('Add connection'),
+              ),
             ),
     );
   }
@@ -417,26 +499,18 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final state = AppStateScope.of(context).systemState.value;
     final configured = state?.batterySensorConfigured == true;
     final simulated = state?.sensorInputSource?.toUpperCase() == 'SIMULATED';
+
     return SectionCard(
-      title: 'Central battery monitor',
+      title: 'Battery',
       trailing: StatusBadge(
         label: configured ? 'Configured' : 'Not configured',
         tone: configured ? StatusTone.positive : StatusTone.warning,
       ),
       child: Column(
         children: [
-          SectionRow(
-            label: 'Input',
-            value: state?.sensorInputSource ?? 'Unavailable',
-          ),
-          SectionRow(
-            label: 'Voltage',
-            value: Formatters.voltage(state?.batteryVoltage),
-          ),
-          SectionRow(
-            label: 'Current',
-            value: Formatters.current(state?.batteryCurrent),
-          ),
+          SectionRow(label: 'Input', value: state?.sensorInputSource ?? 'Unavailable'),
+          SectionRow(label: 'Voltage', value: Formatters.voltage(state?.batteryVoltage)),
+          SectionRow(label: 'Current', value: Formatters.current(state?.batteryCurrent)),
           SectionRow(
             label: 'State of charge',
             value: Formatters.percent(state?.batterySocPercent),
@@ -451,42 +525,30 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               label: 'Capacity',
               value: _numberText(_lastBattery, 'batteryCapacityAmpHours', ' Ah'),
             ),
-            SectionRow(
-              label: 'Maximum sensor current',
-              value: _numberText(
-                _lastBattery,
-                'maximumExpectedCurrentAmps',
-                ' A',
-              ),
-            ),
-            SectionRow(
-              label: 'Shunt resistance',
-              value: _numberText(_lastBattery, 'shuntResistanceOhms', ' Ω'),
-            ),
             SectionRow(label: 'Last applied', value: _savedAt(_lastBattery)),
           ],
           const SizedBox(height: AppSpacing.sm),
           Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
             children: [
               OutlinedButton.icon(
                 onPressed: central == null ? null : () => _configureBattery(central),
-                icon: const Icon(Icons.tune_outlined),
-                label: Text(configured ? 'Reconfigure' : 'Configure'),
+                icon: const Icon(Icons.tune_outlined, size: 18),
+                label: Text(configured ? 'Configure' : 'Set up'),
               ),
               OutlinedButton(
                 onPressed: _sourceBusy ? null : () => _setSimulation(!simulated),
                 child: Text(
                   _sourceBusy
                       ? 'Applying…'
-                      : (simulated ? 'Use INA219' : 'Use simulation'),
+                      : (simulated ? 'Use INA219' : 'Simulate battery'),
                 ),
               ),
               if (simulated)
                 OutlinedButton(
                   onPressed: _setSimulationValues,
-                  child: const Text('Set simulated readings'),
+                  child: const Text('Set readings'),
                 ),
             ],
           ),
@@ -500,14 +562,14 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     return SectionCard(
       title: 'Safety policy',
       trailing: StatusBadge(
-        label: hasSnapshot ? 'Last applied here' : 'Values unavailable',
+        label: hasSnapshot ? 'Applied here' : 'Not available',
         tone: hasSnapshot ? StatusTone.info : StatusTone.neutral,
       ),
       child: Column(
         children: [
           if (hasSnapshot) ...[
             SectionRow(
-              label: 'Minimum state of charge',
+              label: 'Minimum SoC',
               value: _numberText(
                 _lastSafety,
                 'minimumStateOfChargePercent',
@@ -519,7 +581,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               value: _numberText(_lastSafety, 'requiredRuntimeHours', ' h'),
             ),
             SectionRow(
-              label: 'Maximum battery discharge',
+              label: 'Battery discharge',
               value: _numberText(
                 _lastSafety,
                 'maximumBatteryDischargeCurrentAmps',
@@ -527,7 +589,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
               ),
             ),
             SectionRow(
-              label: 'Maximum main current',
+              label: 'Main current',
               value: _numberText(_lastSafety, 'maximumMainCurrentAmps', ' A'),
             ),
             SectionRow(label: 'Last applied', value: _savedAt(_lastSafety)),
@@ -535,14 +597,15 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
             const SectionRow(
               label: 'Current values',
               value: 'Not published by Central',
+              muted: true,
             ),
           const SizedBox(height: AppSpacing.sm),
           Align(
             alignment: Alignment.centerRight,
             child: OutlinedButton.icon(
               onPressed: _configureSafety,
-              icon: const Icon(Icons.edit_outlined),
-              label: Text(hasSnapshot ? 'Edit policy' : 'Configure policy'),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: Text(hasSnapshot ? 'Edit' : 'Configure'),
             ),
           ),
         ],
@@ -555,11 +618,11 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final freePins = node.availableRelayPins
         .where((pin) => !usedPins.contains(pin))
         .toList();
-    final canAddLoad =
-        node.isSmartNode && node.isCommissioned && freePins.isNotEmpty;
+    final canAddLoad = node.isSmartNode && node.isCommissioned && freePins.isNotEmpty;
 
     return SectionCard(
       title: node.displayName,
+      subtitle: node.mac,
       trailing: StatusBadge(
         label: node.online == true
             ? 'Online'
@@ -569,7 +632,6 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SectionRow(label: 'MAC address', value: node.mac),
           SectionRow(label: 'Role', value: node.role),
           if (node.firmwareVersion != null)
             SectionRow(label: 'Firmware', value: node.firmwareVersion),
@@ -580,44 +642,41 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
                   ? 'None declared'
                   : node.availableRelayPins.join(', '),
             ),
-          const SizedBox(height: AppSpacing.sm),
-          if (nodeLoads.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              child: Text('No loads configured.'),
-            )
-          else
-            ...nodeLoads.map(_loadTile),
-          const SizedBox(height: AppSpacing.sm),
+          if (nodeLoads.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text('Loads', style: AppTextStyles.label),
+            const SizedBox(height: AppSpacing.xs),
+            for (final load in nodeLoads) _loadTile(load),
+          ],
+          const SizedBox(height: AppSpacing.md),
           Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
             children: [
               if (node.canBeCommissioned)
                 FilledButton.icon(
                   onPressed: () => _commission(node),
-                  icon: const Icon(Icons.add_link_outlined),
+                  icon: const Icon(Icons.add_link_outlined, size: 18),
                   label: const Text('Commission'),
                 ),
               if (node.isCommissioned)
                 OutlinedButton.icon(
                   onPressed: () => _commission(node, rename: true),
-                  icon: const Icon(Icons.edit_outlined),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
                   label: const Text('Rename'),
                 ),
               if (node.isSmartNode && node.isCommissioned)
                 OutlinedButton.icon(
-                  onPressed: () => _decommission(node),
-                  icon: const Icon(Icons.link_off_outlined),
-                  label: const Text('Decommission'),
+                  onPressed: canAddLoad ? () => _addLoad(node, nodeLoads) : null,
+                  icon: const Icon(Icons.add_outlined, size: 18),
+                  label: Text(freePins.isEmpty ? 'No free relays' : 'Add load'),
                 ),
               if (node.isSmartNode && node.isCommissioned)
-                FilledButton.icon(
-                  onPressed: canAddLoad ? () => _addLoad(node, nodeLoads) : null,
-                  icon: const Icon(Icons.add_outlined),
-                  label: Text(
-                    freePins.isEmpty ? 'No free relay pins' : 'Add load',
-                  ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                  onPressed: () => _decommission(node),
+                  icon: const Icon(Icons.link_off_outlined, size: 18),
+                  label: const Text('Decommission'),
                 ),
             ],
           ),
@@ -627,33 +686,63 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
   }
 
   Widget _loadTile(LoadModel load) {
+    final isOn = load.displayState == true;
+    final busy = _loadsBeingUpdated.contains(load.id);
     final schedule = load.schedule.enabled
         ? '${Formatters.timeOfDay(load.schedule.startHour ?? 0, load.schedule.startMinute ?? 0)} – ${Formatters.timeOfDay(load.schedule.endHour ?? 0, load.schedule.endMinute ?? 0)}'
         : 'No schedule';
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: AppColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      child: ListTile(
-        dense: true,
-        leading: Icon(
-          load.displayState == true
-              ? Icons.flash_on_rounded
-              : Icons.flash_off_outlined,
-        ),
-        title: Text(load.name),
-        subtitle: Text(
-          'GPIO ${load.relayPin} · ${Formatters.power(load.plannedPowerW)} · ${load.mode == LoadMode.auto ? 'Auto' : 'Fixed'} · Priority ${load.priority}/10\n$schedule',
-        ),
-        isThreeLine: true,
-        trailing: OutlinedButton(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)),
+      child: Row(
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: isOn ? AppColors.success : AppColors.error,
+              shape: BoxShape.circle,
+            ),
           ),
-          child: const Text('Open'),
-        ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(load.name, style: AppTextStyles.label),
+                const SizedBox(height: 2),
+                Text(
+                  'GPIO ${load.relayPin} · ${Formatters.power(load.plannedPowerW)} · ${load.mode == LoadMode.auto ? 'AUTO' : 'FIXED'} · Priority ${load.priority}/10',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption,
+                ),
+                if (load.mode == LoadMode.auto)
+                  Text(schedule, style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => _editLoad(load),
+            icon: busy
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.edit_outlined, size: 16),
+            label: Text(busy ? 'Saving' : 'Edit'),
+          ),
+        ],
       ),
     );
   }
@@ -668,9 +757,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
 
   String _savedAt(Map<String, dynamic>? data) {
     final raw = data?['savedAt']?.toString();
-    return Formatters.relativeTime(
-      raw == null ? null : DateTime.tryParse(raw),
-    );
+    return Formatters.relativeTime(raw == null ? null : DateTime.tryParse(raw));
   }
 
   String _connectionLabel(MqttConnectionStatus status) {

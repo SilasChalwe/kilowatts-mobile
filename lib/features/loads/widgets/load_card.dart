@@ -17,25 +17,27 @@ class LoadCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOn = load.displayState == true;
     final priority = LoadPriorityLevel.bucketFor(load.priority);
-    final hasSchedule = load.schedule.enabled;
     final deferred = !isOn && load.rejectionReason != null;
 
     return Material(
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(16),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: BorderSide(
+          color: deferred
+              ? AppColors.warning.withValues(alpha: 0.32)
+              : AppColors.border,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: deferred
-                  ? AppColors.warning.withValues(alpha: 0.35)
-                  : AppColors.border,
-            ),
-          ),
+        mouseCursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        hoverColor: AppColors.primary.withValues(alpha: 0.03),
+        focusColor: AppColors.primarySoft,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -43,18 +45,17 @@ class LoadCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: (isOn ? AppColors.success : AppColors.surfaceMuted)
-                          .withValues(alpha: isOn ? 0.10 : 1),
-                      borderRadius: BorderRadius.circular(12),
+                      color: isOn
+                          ? AppColors.successSoft
+                          : AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                     child: Icon(
                       isOn ? Icons.flash_on_rounded : Icons.power_settings_new_rounded,
-                      color: isOn
-                          ? AppColors.success
-                          : AppColors.textSecondary,
+                      color: isOn ? AppColors.success : AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -62,7 +63,12 @@ class LoadCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(load.name, style: AppTextStyles.label),
+                        Text(
+                          load.name,
+                          style: AppTextStyles.sectionTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         const SizedBox(height: 3),
                         Text(
                           load.owningNodeName ?? load.owningNodeMac,
@@ -88,34 +94,53 @@ class LoadCard extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: AppSpacing.md),
+              const Divider(),
               const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _MetaChip(
-                    icon: load.mode == LoadMode.auto
-                        ? Icons.auto_awesome_outlined
-                        : Icons.touch_app_outlined,
-                    label: load.mode == LoadMode.auto ? 'Auto' : 'Fixed',
-                  ),
-                  _MetaChip(
-                    icon: Icons.flag_outlined,
-                    label: '${priority.label} priority · ${load.priority}/10',
-                  ),
-                  _MetaChip(
-                    icon: Icons.bolt_outlined,
-                    label: '${Formatters.power(load.plannedPowerW)} planned',
-                  ),
-                  if (hasSchedule)
-                    _MetaChip(
-                      icon: Icons.schedule_outlined,
-                      label: _scheduleLabel(load.schedule),
+                  Expanded(
+                    child: _CardMetric(
+                      label: 'Mode',
+                      value: load.mode == LoadMode.auto ? 'Automatic' : 'Fixed',
                     ),
+                  ),
+                  Expanded(
+                    child: _CardMetric(
+                      label: 'Priority',
+                      value: '${priority.label} · ${load.priority}/10',
+                    ),
+                  ),
+                  Expanded(
+                    child: _CardMetric(
+                      label: 'Planned power',
+                      value: Formatters.power(load.plannedPowerW),
+                    ),
+                  ),
                 ],
               ),
+              if (load.schedule.enabled) ...[
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.schedule_outlined,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: Text(
+                        'Preferred window  ${_scheduleLabel(load.schedule)}',
+                        style: AppTextStyles.caption,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (deferred) ...[
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: AppSpacing.md),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
@@ -123,8 +148,8 @@ class LoadCard extends StatelessWidget {
                     vertical: AppSpacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
+                    color: AppColors.warningSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Row(
                     children: [
@@ -146,14 +171,24 @@ class LoadCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: AppSpacing.xs),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: onTap,
-                  icon: const Icon(Icons.tune_rounded, size: 17),
-                  label: const Text('View & control'),
-                ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Updated ${Formatters.relativeTime(load.lastUpdated)}',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                  if (onTap != null)
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                ],
               ),
             ],
           ),
@@ -162,35 +197,36 @@ class LoadCard extends StatelessWidget {
     );
   }
 
-  String _scheduleLabel(LoadSchedule schedule) {
+  static String _scheduleLabel(LoadSchedule schedule) {
     final startHour = schedule.startHour ?? 0;
     final startMinute = schedule.startMinute ?? 0;
     final endHour = schedule.endHour ?? ((startHour + 1) % 24);
     final endMinute = schedule.endMinute ?? startMinute;
-    return '${Formatters.timeOfDay(startHour, startMinute)}–${Formatters.timeOfDay(endHour, endMinute)}';
+    return '${Formatters.timeOfDay(startHour, startMinute)} – ${Formatters.timeOfDay(endHour, endMinute)}';
   }
 }
 
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
+class _CardMetric extends StatelessWidget {
+  const _CardMetric({required this.label, required this.value});
 
-  final IconData icon;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 14, color: AppColors.textSecondary),
-          const SizedBox(width: 5),
           Text(label, style: AppTextStyles.caption),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.label,
+          ),
         ],
       ),
     );

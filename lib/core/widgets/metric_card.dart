@@ -4,8 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text_styles.dart';
 
-/// A single glanceable metric tile — a large value with a short label,
-/// used across the dashboard, battery, and power screens.
+/// Glanceable operational metric used across dashboard and power surfaces.
 class MetricCard extends StatelessWidget {
   const MetricCard({
     required this.label,
@@ -24,34 +23,47 @@ class MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = valueColor ?? AppColors.primary;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
+      constraints: const BoxConstraints(minHeight: 112),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 16, color: AppColors.textSecondary),
-                const SizedBox(width: AppSpacing.xxs),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(icon, size: 17, color: accent),
+                ),
+                const SizedBox(width: AppSpacing.sm),
               ],
               Expanded(
                 child: Text(
                   label,
-                  style: AppTextStyles.caption,
-                  maxLines: 1,
+                  style: AppTextStyles.caption.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.md),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -59,7 +71,8 @@ class MetricCard extends StatelessWidget {
               Flexible(
                 child: Text(
                   value,
-                  style: AppTextStyles.title.copyWith(
+                  style: AppTextStyles.pageTitle.copyWith(
+                    fontSize: 24,
                     color: valueColor ?? AppColors.textPrimary,
                   ),
                   maxLines: 1,
@@ -67,7 +80,7 @@ class MetricCard extends StatelessWidget {
                 ),
               ),
               if (unit != null) ...[
-                const SizedBox(width: 3),
+                const SizedBox(width: 4),
                 Text(unit!, style: AppTextStyles.caption),
               ],
             ],
