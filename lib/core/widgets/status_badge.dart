@@ -21,6 +21,9 @@ class StatusBadge extends StatelessWidget {
 
   final String label;
   final StatusTone tone;
+
+  /// Kept for source compatibility with the original component API. The
+  /// visual cue is now a tone-specific icon rather than a color-only dot.
   final bool showDot;
 
   Color get _color {
@@ -38,37 +41,52 @@ class StatusBadge extends StatelessWidget {
     }
   }
 
+  IconData get _icon {
+    switch (tone) {
+      case StatusTone.positive:
+        return Icons.check_circle_outline_rounded;
+      case StatusTone.negative:
+        return Icons.cancel_outlined;
+      case StatusTone.warning:
+        return Icons.warning_amber_rounded;
+      case StatusTone.info:
+        return Icons.info_outline_rounded;
+      case StatusTone.neutral:
+        return Icons.circle_outlined;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = _color;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: 5,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showDot) ...[
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    return Semantics(
+      label: label,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: 5,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showDot) ...[
+              Icon(_icon, size: 14, color: color),
+              const SizedBox(width: AppSpacing.xxs),
+            ],
+            Text(
+              label,
+              style: AppTextStyles.caption.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(width: AppSpacing.xxs),
           ],
-          Text(
-            label,
-            style: AppTextStyles.caption.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
