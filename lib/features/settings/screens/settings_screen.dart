@@ -3,14 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/routing/app_routes.dart';
-import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../system/models/system_state_model.dart';
 import 'system_connection_settings_screen.dart';
 import '../widgets/settings_tile.dart';
 
@@ -41,7 +38,6 @@ class SettingsScreen extends StatelessWidget {
 
     final accountCard = SectionCard(
       title: 'Account',
-      subtitle: 'Identity used to access this Kilowatts installation.',
       child: Column(
         children: [
           SectionRow(label: 'Name', value: user?.displayName ?? 'Not set'),
@@ -54,45 +50,6 @@ class SettingsScreen extends StatelessWidget {
                   ? StatusTone.positive
                   : StatusTone.warning,
             ),
-          ),
-        ],
-      ),
-    );
-
-    final systemCard = SectionCard(
-      title: 'System status',
-      subtitle: 'Live connection and Central diagnostics.',
-      child: Column(
-        children: [
-          ValueListenableBuilder<MqttConnectionStatus>(
-            valueListenable: appState.connectionStatus,
-            builder: (context, status, _) {
-              final connected = status == MqttConnectionStatus.connected;
-              return SectionRow(
-                label: 'MQTT broker',
-                valueWidget: StatusBadge(
-                  label: connected ? 'Connected' : 'Not connected',
-                  tone: connected ? StatusTone.positive : StatusTone.negative,
-                ),
-              );
-            },
-          ),
-          ValueListenableBuilder<SystemStateModel?>(
-            valueListenable: appState.systemState,
-            builder: (context, state, _) {
-              return Column(
-                children: [
-                  SectionRow(
-                    label: 'Battery input',
-                    value: state?.sensorInputSource ?? 'Unavailable',
-                  ),
-                  SectionRow(
-                    label: 'Reported faults',
-                    value: state?.faultCount == null ? '—' : '${state!.faultCount}',
-                  ),
-                ],
-              );
-            },
           ),
         ],
       ),
@@ -113,23 +70,11 @@ class SettingsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (embedded) ...[
-              const PageHeader(
-                title: 'Settings',
-                subtitle: 'Account, connection and application preferences.',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-            ],
-            ResponsiveCardGrid(
-              minCardWidth: 360,
-              maxColumns: 2,
-              children: [accountCard, systemCard],
-            ),
-            const SizedBox(height: AppSpacing.md),
             ResponsiveCardGrid(
               minCardWidth: 360,
               maxColumns: 2,
               children: [
+                accountCard,
                 SettingsTile(
                   icon: Icons.router_outlined,
                   title: 'System connection',
@@ -140,19 +85,22 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                aboutCard,
               ],
             ),
-            const SizedBox(height: AppSpacing.lg),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: SettingsTile(
-                icon: Icons.logout_rounded,
-                title: 'Sign out',
-                subtitle: 'End this account session on the current device',
-                isDestructive: true,
-                onTap: () => _signOut(context),
-              ),
+            const SizedBox(height: AppSpacing.md),
+            ResponsiveCardGrid(
+              minCardWidth: 360,
+              maxColumns: 2,
+              children: [
+                aboutCard,
+                SettingsTile(
+                  icon: Icons.logout_rounded,
+                  title: 'Sign out',
+                  subtitle: 'End this account session on the current device',
+                  isDestructive: true,
+                  onTap: () => _signOut(context),
+                ),
+              ],
             ),
           ],
         ),

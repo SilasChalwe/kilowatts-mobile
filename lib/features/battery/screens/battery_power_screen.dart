@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/error_state.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/trend_chart_card.dart';
 import '../../system/models/system_state_model.dart';
@@ -39,10 +38,6 @@ class BatteryPowerScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (embedded) ...[
-                      const PageHeader(title: 'Battery & power'),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
                     ResponsiveCardGrid(
                       minCardWidth: 360,
                       maxColumns: 2,

@@ -6,7 +6,6 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -139,9 +138,22 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     }
   }
 
+  List<KilowattsUserAccess> _visibleUsers(BuildContext context) {
+    if (_users.isNotEmpty) return _users;
+    final email = AppStateScope.of(context).currentUser?.email;
+    if (email == null || email.isEmpty) return const [];
+    return [
+      KilowattsUserAccess(
+        email: email.toLowerCase(),
+        role: KilowattsRole.installer,
+      ),
+    ];
+  }
+
   Widget _content(BuildContext context) {
     final appState = AppStateScope.of(context);
     final currentEmail = appState.currentUser?.email;
+    final visibleUsers = _visibleUsers(context);
 
     return ListView(
       children: [
@@ -150,18 +162,47 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PageHeader(
-                title: 'Users & access',
-                actions: [
-                  FilledButton.icon(
-                    onPressed: _openEditor,
-                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                    label: const Text('Add user'),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _openEditor,
+                  icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                  label: const Text('Add user'),
+                ),
               ),
-              const SizedBox(height: AppSpacing.lg),
-              if (_loading && _users.isEmpty)
+              const SizedBox(height: AppSpacing.md),
+              if (_refreshError != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.warningSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.sync_problem_outlined,
+                        size: 18,
+                        color: AppColors.warning,
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      const Expanded(
+                        child: Text(
+                          'Could not refresh all access records. Showing the last known accounts.',
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                      TextButton(onPressed: _retry, child: const Text('Retry')),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
+              if (_loading && _users.isEmpty && visibleUsers.isEmpty)
                 const SectionCard(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
@@ -178,77 +219,28 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
                     ),
                   ),
                 )
-              else if (_users.isEmpty && _refreshError != null)
-                SectionCard(
-                  title: 'Users unavailable',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.cloud_off_outlined, color: AppColors.error),
-                      const SizedBox(width: AppSpacing.sm),
-                      const Expanded(
-                        child: Text(
-                          'The access list could not be loaded.',
-                          style: AppTextStyles.caption,
-                        ),
-                      ),
-                      OutlinedButton(onPressed: _retry, child: const Text('Retry')),
-                    ],
-                  ),
-                )
-              else ...[
-                if (_refreshError != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.warningSoft,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.sync_problem_outlined,
-                          size: 18,
-                          color: AppColors.warning,
-                        ),
-                        const SizedBox(width: AppSpacing.xs),
-                        const Expanded(
-                          child: Text(
-                            'Could not refresh users. Showing the last available list.',
-                            style: AppTextStyles.caption,
-                          ),
-                        ),
-                        TextButton(onPressed: _retry, child: const Text('Retry')),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                ],
+              else
                 SectionCard(
                   title: 'Accounts',
                   trailing: Text(
-                    '${_users.length}',
+                    '${visibleUsers.length}',
                     style: AppTextStyles.caption,
                   ),
                   child: Column(
                     children: [
-                      for (var index = 0; index < _users.length; index++) ...[
+                      for (var index = 0; index < visibleUsers.length; index++) ...[
                         _UserTile(
-                          user: _users[index],
-                          isCurrent: _users[index].email.toLowerCase() ==
+                          user: visibleUsers[index],
+                          isCurrent: visibleUsers[index].email.toLowerCase() ==
                               currentEmail?.toLowerCase(),
-                          onEdit: () => _openEditor(_users[index]),
-                          onRevoke: () => _revoke(_users[index]),
+                          onEdit: () => _openEditor(visibleUsers[index]),
+                          onRevoke: () => _revoke(visibleUsers[index]),
                         ),
-                        if (index != _users.length - 1) const Divider(),
+                        if (index != visibleUsers.length - 1) const Divider(),
                       ],
                     ],
                   ),
                 ),
-              ],
             ],
           ),
         ),
@@ -258,16 +250,13 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final content = SafeArea(child: _content(context));
     if (widget.embedded) {
-      return Material(
-        color: Colors.transparent,
-        child: SafeArea(child: _content(context)),
-      );
+      return Material(color: Colors.transparent, child: content);
     }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Users & access')),
-      body: SafeArea(child: _content(context)),
+      body: content,
     );
   }
 }

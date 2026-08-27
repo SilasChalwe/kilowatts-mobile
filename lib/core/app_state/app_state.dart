@@ -70,6 +70,13 @@ class AppState {
       DateTime.now().difference(lastLiveSystemUpdate.value!) <
           AppConstants.staleDataThreshold;
 
+  /// Firebase authentication changes used by [AuthGate].
+  Stream<User?> get userChanges => authService.userChanges;
+
+  /// Resolves the signed-in account to its Kilowatts role/installation.
+  Future<InstallationAccess> resolveCurrentAccess() =>
+      _accessControlService.resolve(currentUser);
+
   void _wireMqttSubscriptions() {
     connectionStatus.value = _mqtt.currentStatus;
 
