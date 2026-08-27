@@ -125,7 +125,8 @@ class _TelemetryLinePainter extends CustomPainter {
         canvas,
         label,
         Offset(x, plot.bottom + 8),
-        centered: true,
+        alignRight: index == 2,
+        centered: index == 1,
       );
     }
 
