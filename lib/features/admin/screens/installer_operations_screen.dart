@@ -104,107 +104,86 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
     return ValueListenableBuilder(
       valueListenable: appState.systemState,
       builder: (context, state, _) {
-        return ListView(
-          children: [
-            ResponsiveContent(
-              maxWidth: 1120,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ResponsiveCardGrid(
-                    minCardWidth: 360,
-                    maxColumns: 2,
-                    children: [
-                      SectionCard(
-                        title: 'Best-First optimization',
-                        subtitle: 'Request a planning cycle immediately.',
-                        child: Column(
-                          children: [
-                            SectionRow(
-                              label: 'Last optimization',
-                              value: Formatters.relativeTime(state?.lastOptimizationAt),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: FilledButton.icon(
-                                onPressed: _optimizing ? null : _runOptimization,
-                                icon: _optimizing
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Icon(Icons.play_arrow_rounded, size: 18),
-                                label: Text(_optimizing ? 'Requesting…' : 'Run now'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SectionCard(
-                        title: 'Automatic optimization',
-                        subtitle: 'Cadence used by Central between planning cycles.',
-                        child: Column(
-                          children: [
-                            SectionRow(
-                              label: 'Interval',
-                              value: _lastAppliedInterval == null
-                                  ? 'Not published by Central'
-                                  : '${_friendlyInterval(_lastAppliedInterval!)} · last applied here',
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: OutlinedButton.icon(
-                                onPressed: _savingInterval ? null : _changeInterval,
-                                icon: const Icon(Icons.edit_outlined, size: 18),
-                                label: Text(
-                                  _savingInterval ? 'Applying…' : 'Change interval',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_message != null) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: _messageIsError
-                            ? AppColors.errorSoft
-                            : AppColors.successSoft,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        border: Border.all(
-                          color: (_messageIsError
-                                  ? AppColors.error
-                                  : AppColors.success)
-                              .withValues(alpha: 0.16),
-                        ),
-                      ),
-                      child: Row(
+        return SingleChildScrollView(
+          child: ResponsiveContent(
+            maxWidth: 1280,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ResponsiveCardGrid(
+                  minCardWidth: 300,
+                  maxColumns: 2,
+                  children: [
+                    SectionCard(
+                      title: 'Run optimization',
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            _messageIsError
-                                ? Icons.error_outline_rounded
-                                : Icons.check_circle_outline_rounded,
-                            size: 18,
-                            color: _messageIsError
-                                ? AppColors.error
-                                : AppColors.success,
+                          SectionRow(
+                            label: 'Last run',
+                            value: Formatters.relativeTime(
+                              state?.lastOptimizationAt,
+                            ),
                           ),
-                          const SizedBox(width: AppSpacing.xs),
-                          Expanded(
-                            child: Text(
-                              _message!,
-                              style: AppTextStyles.caption.copyWith(
-                                color: _messageIsError
-                                    ? AppColors.error
-                                    : AppColors.success,
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'Request one Best-First planning cycle using the current battery budget, priorities and schedules.',
+                            style: AppTextStyles.caption,
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.icon(
+                              onPressed: _optimizing ? null : _runOptimization,
+                              icon: _optimizing
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 18,
+                                    ),
+                              label: Text(
+                                _optimizing ? 'Requesting…' : 'Run now',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SectionCard(
+                      title: 'Automatic interval',
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionRow(
+                            label: 'Cadence',
+                            value: _lastAppliedInterval == null
+                                ? 'Not published by Central'
+                                : '${_friendlyInterval(_lastAppliedInterval!)} · last applied here',
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'Controls how often Central automatically starts a new planning cycle.',
+                            style: AppTextStyles.caption,
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  _savingInterval ? null : _changeInterval,
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: Text(
+                                _savingInterval
+                                    ? 'Applying…'
+                                    : 'Change interval',
                               ),
                             ),
                           ),
@@ -212,10 +191,56 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
                       ),
                     ),
                   ],
+                ),
+                if (_message != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _messageIsError
+                          ? AppColors.errorSoft
+                          : AppColors.successSoft,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(
+                        color: (_messageIsError
+                                ? AppColors.error
+                                : AppColors.success)
+                            .withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _messageIsError
+                              ? Icons.error_outline_rounded
+                              : Icons.check_circle_outline_rounded,
+                          size: 18,
+                          color: _messageIsError
+                              ? AppColors.error
+                              : AppColors.success,
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                        Expanded(
+                          child: Text(
+                            _message!,
+                            style: AppTextStyles.caption.copyWith(
+                              color: _messageIsError
+                                  ? AppColors.error
+                                  : AppColors.success,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -295,7 +320,9 @@ class _IntervalDialogState extends State<_IntervalDialog> {
                 for (final preset in const [30, 60, 300, 900, 3600])
                   ChoiceChip(
                     label: Text(
-                      _InstallerOperationsScreenState._friendlyInterval(preset),
+                      _InstallerOperationsScreenState._friendlyInterval(
+                        preset,
+                      ),
                     ),
                     selected: selected == preset,
                     onSelected: (_) => _select(preset),
