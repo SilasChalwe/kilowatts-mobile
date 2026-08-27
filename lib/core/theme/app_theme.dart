@@ -27,6 +27,7 @@ abstract final class AppTheme {
       scaffoldBackgroundColor: AppColors.background,
       splashFactory: InkSparkle.splashFactory,
       visualDensity: VisualDensity.standard,
+      materialTapTargetSize: MaterialTapTargetSize.padded,
     );
 
     return base.copyWith(
@@ -112,6 +113,12 @@ abstract final class AppTheme {
             return AppColors.primary;
           }),
           foregroundColor: const WidgetStatePropertyAll(AppColors.textOnPrimary),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) {
+              return Colors.white.withValues(alpha: 0.12);
+            }
+            return null;
+          }),
           textStyle: const WidgetStatePropertyAll(AppTextStyles.label),
           shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
@@ -130,11 +137,16 @@ abstract final class AppTheme {
             if (states.contains(WidgetState.hovered)) return AppColors.primaryHover;
             return AppColors.textPrimary;
           }),
-          side: WidgetStateProperty.resolveWith((states) => BorderSide(
-                color: states.contains(WidgetState.hovered)
-                    ? AppColors.primary
-                    : AppColors.borderStrong,
-              )),
+          side: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) {
+              return const BorderSide(color: AppColors.focus, width: 1.6);
+            }
+            return BorderSide(
+              color: states.contains(WidgetState.hovered)
+                  ? AppColors.primary
+                  : AppColors.borderStrong,
+            );
+          }),
           textStyle: const WidgetStatePropertyAll(AppTextStyles.label),
           shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
@@ -143,10 +155,14 @@ abstract final class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size(40, 40)),
+          minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.hovered)) return AppColors.primaryHover;
             return AppColors.primary;
+          }),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) return AppColors.primarySoft;
+            return null;
           }),
           textStyle: const WidgetStatePropertyAll(AppTextStyles.label),
           shape: WidgetStatePropertyAll(
@@ -158,6 +174,10 @@ abstract final class AppTheme {
         style: ButtonStyle(
           minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
           foregroundColor: const WidgetStatePropertyAll(AppColors.textSecondary),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) return AppColors.primarySoft;
+            return null;
+          }),
           shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
           ),
