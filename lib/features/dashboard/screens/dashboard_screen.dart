@@ -41,6 +41,14 @@ class DashboardScreen extends StatelessWidget {
     }
   }
 
+  String _reserveStatus(double? soc) {
+    if (soc == null) return 'Unavailable';
+    if (soc <= AppConstants.defaultLowBatteryWarningPercent) {
+      return 'Low reserve';
+    }
+    return 'Normal';
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
@@ -82,9 +90,11 @@ class DashboardScreen extends StatelessWidget {
                       MetricCard(
                         label: 'Battery reserve',
                         value: Formatters.percent(soc),
-                        icon: lowReserve
-                            ? Icons.battery_alert_outlined
-                            : Icons.battery_charging_full_outlined,
+                        icon: soc == null
+                            ? Icons.help_outline_rounded
+                            : lowReserve
+                                ? Icons.battery_alert_outlined
+                                : Icons.battery_charging_full_outlined,
                         valueColor: lowReserve ? AppColors.warning : null,
                       ),
                       MetricCard(
@@ -160,7 +170,7 @@ class DashboardScreen extends StatelessWidget {
                                 ),
                                 SectionRow(
                                   label: 'Reserve status',
-                                  value: lowReserve ? 'Low reserve' : 'Normal',
+                                  value: _reserveStatus(soc),
                                 ),
                                 SectionRow(
                                   label: 'Load mix',
