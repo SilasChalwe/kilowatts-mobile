@@ -375,58 +375,84 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
           }
         }
 
+        final setupColumn = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Installation setup', style: AppTextStyles.sectionTitle),
+            const SizedBox(height: AppSpacing.sm),
+            _connectionCard(appState.connectionStatus.value),
+            const SizedBox(height: AppSpacing.sm),
+            _batteryCard(central),
+            const SizedBox(height: AppSpacing.sm),
+            _safetyCard(),
+          ],
+        );
+
+        final nodesWorkspace = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Nodes & loads', style: AppTextStyles.sectionTitle),
+                ),
+                Text(
+                  '${nodes.length} nodes · ${loads.length} loads',
+                  style: AppTextStyles.caption,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            if (nodes.isEmpty)
+              const SectionCard(
+                title: 'No nodes reported',
+                child: Text(
+                  'Connect Central and wait for node identity reports.',
+                  style: AppTextStyles.caption,
+                ),
+              )
+            else
+              ResponsiveCardGrid(
+                minCardWidth: 390,
+                maxColumns: 2,
+                children: [
+                  for (final node in nodes)
+                    _nodeCard(
+                      node,
+                      loads
+                          .where((load) => load.owningNodeMac == node.mac)
+                          .toList(),
+                    ),
+                ],
+              ),
+          ],
+        );
+
         return ListView(
           children: [
             ResponsiveContent(
               maxWidth: 1320,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ResponsiveCardGrid(
-                    minCardWidth: 330,
-                    maxColumns: 3,
-                    children: [
-                      _connectionCard(appState.connectionStatus.value),
-                      _batteryCard(central),
-                      _safetyCard(),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text('Nodes & loads', style: AppTextStyles.title),
-                      ),
-                      Text(
-                        '${nodes.length} nodes · ${loads.length} loads',
-                        style: AppTextStyles.caption,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  if (nodes.isEmpty)
-                    const SectionCard(
-                      title: 'No nodes reported',
-                      child: Text(
-                        'Connect Central and wait for node identity reports.',
-                        style: AppTextStyles.caption,
-                      ),
-                    )
-                  else
-                    ResponsiveCardGrid(
-                      minCardWidth: 440,
-                      maxColumns: 2,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth < 980) {
+                    return Column(
                       children: [
-                        for (final node in nodes)
-                          _nodeCard(
-                            node,
-                            loads
-                                .where((load) => load.owningNodeMac == node.mac)
-                                .toList(),
-                          ),
+                        setupColumn,
+                        const SizedBox(height: AppSpacing.lg),
+                        nodesWorkspace,
                       ],
-                    ),
-                ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 360, child: setupColumn),
+                      const SizedBox(width: AppSpacing.lg),
+                      Expanded(child: nodesWorkspace),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -459,7 +485,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _editBroker,
                     icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit'),
+                    label: const Text('Edit connection'),
                   ),
                 ),
               ],
@@ -479,7 +505,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final state = AppStateScope.of(context).systemState.value;
     final simulated = state?.sensorInputSource?.toUpperCase() == 'SIMULATED';
     return SectionCard(
-      title: 'Battery',
+      title: 'Battery input',
       trailing: StatusBadge(
         label: simulated ? 'Simulation' : 'INA219',
         tone: simulated ? StatusTone.info : StatusTone.neutral,
@@ -566,7 +592,7 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
             child: OutlinedButton.icon(
               onPressed: _configureSafety,
               icon: const Icon(Icons.edit_outlined, size: 18),
-              label: Text(_lastSafety == null ? 'Configure' : 'Edit'),
+              label: Text(_lastSafety == null ? 'Configure' : 'Edit policy'),
             ),
           ),
         ],
@@ -579,14 +605,46 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final freePins = node.availableRelayPins
         .where((pin) => !usedPins.contains(pin))
         .toList();
-    final canAddLoad = node.isSmartNode && node.isCommissioned && freePins.isNotEmpty;
+    final canAddLoad =
+        node.isSmartNode && node.isCommissioned && freePins.isNotEmpty;
 
     return SectionCard(
       title: node.displayName,
       subtitle: node.mac,
-      trailing: StatusBadge(
-        label: node.online == true ? 'Online' : 'Offline',
-        tone: node.online == true ? StatusTone.positive : StatusTone.negative,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StatusBadge(
+            label: node.online == true ? 'Online' : 'Offline',
+            tone:
+                node.online == true ? StatusTone.positive : StatusTone.negative,
+          ),
+          if (node.isCommissioned) ...[
+            const SizedBox(width: 4),
+            PopupMenuButton<String>(
+              tooltip: 'Node actions',
+              onSelected: (action) {
+                if (action == 'rename') {
+                  _commission(node, rename: true);
+                } else if (action == 'decommission') {
+                  _decommission(node);
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'rename',
+                  child: Text('Rename node'),
+                ),
+                if (node.isSmartNode)
+                  const PopupMenuItem(
+                    value: 'decommission',
+                    child: Text('Decommission node'),
+                  ),
+              ],
+              icon: const Icon(Icons.more_horiz_rounded),
+            ),
+          ],
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,38 +664,21 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
             const Text('No loads configured.', style: AppTextStyles.caption)
           else
             for (final load in nodeLoads) _loadRow(load),
-          const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: [
-              if (node.canBeCommissioned)
-                FilledButton.icon(
-                  onPressed: () => _commission(node),
-                  icon: const Icon(Icons.add_link_outlined, size: 18),
-                  label: const Text('Commission'),
-                ),
-              if (node.isCommissioned)
-                OutlinedButton.icon(
-                  onPressed: () => _commission(node, rename: true),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Rename'),
-                ),
-              if (node.isSmartNode && node.isCommissioned)
-                OutlinedButton.icon(
-                  onPressed: canAddLoad ? () => _addLoad(node, nodeLoads) : null,
-                  icon: const Icon(Icons.add_outlined, size: 18),
-                  label: Text(freePins.isEmpty ? 'No free relays' : 'Add load'),
-                ),
-              if (node.isSmartNode && node.isCommissioned)
-                TextButton.icon(
-                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                  onPressed: () => _decommission(node),
-                  icon: const Icon(Icons.link_off_outlined, size: 18),
-                  label: const Text('Decommission'),
-                ),
-            ],
-          ),
+          if (node.canBeCommissioned || node.isSmartNode) ...[
+            const SizedBox(height: AppSpacing.sm),
+            if (node.canBeCommissioned)
+              FilledButton.icon(
+                onPressed: () => _commission(node),
+                icon: const Icon(Icons.add_link_outlined, size: 18),
+                label: const Text('Commission node'),
+              )
+            else if (node.isSmartNode && node.isCommissioned)
+              FilledButton.icon(
+                onPressed: canAddLoad ? () => _addLoad(node, nodeLoads) : null,
+                icon: const Icon(Icons.add_outlined, size: 18),
+                label: Text(freePins.isEmpty ? 'No free relays' : 'Add load'),
+              ),
+          ],
         ],
       ),
     );
@@ -648,20 +689,19 @@ class _InstallerConsoleScreenState extends State<InstallerConsoleScreen> {
     final on = load.displayState == true;
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.xs),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: on ? AppColors.success : AppColors.error,
-              shape: BoxShape.circle,
-            ),
+          StatusBadge(
+            label: on ? 'ON' : 'OFF',
+            tone: on ? StatusTone.positive : StatusTone.negative,
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
