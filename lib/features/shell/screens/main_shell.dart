@@ -63,7 +63,7 @@ class _MainShellState extends State<MainShell> {
         page: LoadsScreen(),
       ),
       const _ProductDestination(
-        label: 'System topology',
+        label: 'House topology',
         icon: Icons.account_tree_outlined,
         selectedIcon: Icons.account_tree_rounded,
         page: SystemTopologyScreen(),
@@ -85,12 +85,14 @@ class _MainShellState extends State<MainShell> {
         icon: Icons.insights_outlined,
         selectedIcon: Icons.insights_rounded,
         page: HistoryScreen(embedded: true),
+        showLiveStatus: false,
       ),
       const _ProductDestination(
         label: 'Settings',
         icon: Icons.settings_outlined,
         selectedIcon: Icons.settings_rounded,
         page: SettingsScreen(embedded: true),
+        showLiveStatus: false,
       ),
       if (widget.installerMode) ...[
         const _ProductDestination(
@@ -113,6 +115,7 @@ class _MainShellState extends State<MainShell> {
           selectedIcon: Icons.group_rounded,
           page: InstallerUsersScreen(embedded: true),
           installerOnly: true,
+          showLiveStatus: false,
         ),
       ],
     ];
@@ -127,7 +130,7 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final destinations = _destinations();
     final safeIndex = _currentIndex < destinations.length ? _currentIndex : 0;
-    final currentTitle = destinations[safeIndex].label;
+    final current = destinations[safeIndex];
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -151,7 +154,10 @@ class _MainShellState extends State<MainShell> {
                   Expanded(
                     child: Column(
                       children: [
-                        _DesktopUtilityBar(title: currentTitle),
+                        _DesktopUtilityBar(
+                          title: current.label,
+                          showLiveStatus: current.showLiveStatus,
+                        ),
                         Expanded(
                           child: IndexedStack(
                             index: safeIndex,
@@ -177,13 +183,15 @@ class _MainShellState extends State<MainShell> {
               onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
               icon: const Icon(Icons.menu_rounded),
             ),
-            title: Text(currentTitle),
-            actions: const [
-              Padding(
-                padding: EdgeInsets.only(right: AppSpacing.sm),
-                child: _HeaderConnectionStatus(),
-              ),
-            ],
+            title: Text(current.label),
+            actions: current.showLiveStatus
+                ? const [
+                    Padding(
+                      padding: EdgeInsets.only(right: AppSpacing.sm),
+                      child: _HeaderConnectionStatus(),
+                    ),
+                  ]
+                : null,
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(1),
               child: Divider(height: 1),
@@ -213,9 +221,13 @@ class _MainShellState extends State<MainShell> {
 }
 
 class _DesktopUtilityBar extends StatelessWidget {
-  const _DesktopUtilityBar({required this.title});
+  const _DesktopUtilityBar({
+    required this.title,
+    required this.showLiveStatus,
+  });
 
   final String title;
+  final bool showLiveStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -229,7 +241,7 @@ class _DesktopUtilityBar extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(title, style: AppTextStyles.title)),
-          const _HeaderConnectionStatus(),
+          if (showLiveStatus) const _HeaderConnectionStatus(),
         ],
       ),
     );
@@ -258,6 +270,11 @@ class _HeaderConnectionStatus extends StatelessWidget {
             : busy
                 ? 'Connecting'
                 : 'Offline';
+        final icon = connected
+            ? Icons.cloud_done_outlined
+            : busy
+                ? Icons.sync_rounded
+                : Icons.cloud_off_outlined;
 
         return Container(
           height: 34,
@@ -270,11 +287,7 @@ class _HeaderConnectionStatus extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
+              Icon(icon, size: 15, color: color),
               const SizedBox(width: 7),
               Text(label, style: AppTextStyles.caption),
             ],
@@ -292,6 +305,7 @@ class _ProductDestination {
     required this.selectedIcon,
     required this.page,
     this.installerOnly = false,
+    this.showLiveStatus = true,
   });
 
   final String label;
@@ -299,6 +313,7 @@ class _ProductDestination {
   final IconData selectedIcon;
   final Widget page;
   final bool installerOnly;
+  final bool showLiveStatus;
 }
 
 class _NavigationPanel extends StatelessWidget {
@@ -318,6 +333,7 @@ class _NavigationPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
     final firstInstaller = destinations.indexWhere((item) => item.installerOnly);
+    final user = appState.currentUser;
 
     return ColoredBox(
       color: AppColors.sidebar,
@@ -387,13 +403,15 @@ class _NavigationPanel extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 16,
                     backgroundColor: AppColors.primary,
-                    child: Icon(
-                      Icons.person_outline_rounded,
-                      size: 18,
-                      color: Colors.white,
+                    child: Text(
+                      _initials(user?.displayName, user?.email),
+                      style: AppTextStyles.caption.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -402,9 +420,9 @@ class _NavigationPanel extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          appState.currentUser?.displayName ??
-                              appState.currentUser?.email ??
-                              'Signed in',
+                          user?.displayName?.trim().isNotEmpty == true
+                              ? user!.displayName!.trim()
+                              : user?.email ?? 'Signed in',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.label.copyWith(
@@ -420,6 +438,12 @@ class _NavigationPanel extends StatelessWidget {
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: 'Sign out',
+                    onPressed: appState.signOut,
+                    icon: const Icon(Icons.logout_rounded, size: 18),
+                    color: AppColors.sidebarTextMuted,
+                  ),
                 ],
               ),
             ),
@@ -427,6 +451,14 @@ class _NavigationPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _initials(String? name, String? email) {
+    final source = name?.trim().isNotEmpty == true ? name!.trim() : email?.trim() ?? '';
+    if (source.isEmpty) return '?';
+    final parts = source.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'.toUpperCase();
   }
 }
 
@@ -443,47 +475,29 @@ class _SidebarDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final foreground = selected ? Colors.white : AppColors.sidebarTextMuted;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Material(
-        color: selected ? Colors.white.withValues(alpha: 0.10) : Colors.transparent,
+        color: selected ? AppColors.sidebarActive : Colors.transparent,
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          onTap: onTap,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          hoverColor: Colors.white.withValues(alpha: 0.06),
-          focusColor: Colors.white.withValues(alpha: 0.08),
+          onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 3,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: selected ? AppColors.primary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Icon(
                   selected ? destination.selectedIcon : destination.icon,
                   size: 20,
-                  color: selected
-                      ? AppColors.sidebarText
-                      : AppColors.sidebarTextMuted,
+                  color: foreground,
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     destination.label,
-                    style: AppTextStyles.body.copyWith(
-                      color: selected
-                          ? AppColors.sidebarText
-                          : AppColors.sidebarTextMuted,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                    style: AppTextStyles.label.copyWith(color: foreground),
                   ),
                 ),
               ],
