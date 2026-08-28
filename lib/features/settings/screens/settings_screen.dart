@@ -59,9 +59,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           future: _profile,
           builder: (context, snapshot) {
             final profile = snapshot.data;
-            final profileLoaded = snapshot.connectionState == ConnectionState.done &&
+            final profileLoaded =
+                snapshot.connectionState == ConnectionState.done &&
                 !snapshot.hasError &&
                 profile != null;
+            final fullName = profileLoaded ? profile?.fullName : null;
+            final phoneNumber = profileLoaded ? profile?.phoneNumber : null;
+            final installationId = profileLoaded ? profile?.installationId : null;
+            final role = profileLoaded ? profile?.role : null;
 
             final account = SectionCard(
               title: 'Account',
@@ -73,10 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         radius: 28,
                         backgroundColor: AppColors.primarySoft,
                         child: Text(
-                          _initials(
-                            profileLoaded ? profile.fullName : null,
-                            authUser?.email,
-                          ),
+                          _initials(fullName, authUser?.email),
                           style: AppTextStyles.sectionTitle.copyWith(
                             color: AppColors.primary,
                           ),
@@ -88,14 +90,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              profileLoaded &&
-                                      profile.fullName?.trim().isNotEmpty == true
-                                  ? profile.fullName!.trim()
+                              fullName?.trim().isNotEmpty == true
+                                  ? fullName!.trim()
                                   : authUser?.email ?? 'Signed in',
                               style: AppTextStyles.sectionTitle,
                             ),
-                            if (profileLoaded &&
-                                profile.fullName?.trim().isNotEmpty == true) ...[
+                            if (fullName?.trim().isNotEmpty == true) ...[
                               const SizedBox(height: 3),
                               Text(
                                 authUser?.email ?? '—',
@@ -105,10 +105,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                       ),
-                      if (profileLoaded)
+                      if (role != null)
                         StatusBadge(
-                          label: _roleLabel(profile.role),
-                          tone: profile.role == KilowattsRole.installer
+                          label: _roleLabel(role),
+                          tone: role == KilowattsRole.installer
                               ? StatusTone.info
                               : StatusTone.neutral,
                         ),
@@ -120,15 +120,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SectionRow(
                     label: 'Phone',
                     value: profileLoaded
-                        ? profile.phoneNumber ?? 'Not recorded'
+                        ? phoneNumber ?? 'Not recorded'
                         : snapshot.hasError
                             ? 'Profile unavailable'
                             : 'Loading…',
                   ),
-                  if (profileLoaded && profile.installationId != null)
+                  if (installationId != null)
                     SectionRow(
                       label: 'Installation',
-                      value: profile.installationId!,
+                      value: installationId,
                     ),
                   SectionRow(
                     label: 'Email verification',
