@@ -81,11 +81,9 @@ class AppState {
   Future<InstallationAccess> resolveCurrentAccess() =>
       _accessControlService.resolve(currentUser);
 
-  /// Persists completion of the first-run setup workflow.
   Future<void> setSetupComplete(bool complete) =>
       _localState.setSetupComplete(complete);
 
-  /// Persists a user-friendly node label on this device.
   Future<void> setNodeNameOverride(String mac, String name) =>
       _localState.setNodeNameOverride(mac, name);
 
@@ -432,6 +430,20 @@ class AppState {
   Stream<List<KilowattsUserAccess>> watchAccessUsers() =>
       _accessControlService.watchUsers();
 
+  Future<void> saveAccessUser({
+    required String email,
+    required String fullName,
+    required String phoneNumber,
+    required String role,
+    String? installationId,
+  }) => _accessControlService.saveUser(
+    email: email,
+    fullName: fullName,
+    phoneNumber: phoneNumber,
+    role: role,
+    installationId: installationId,
+  );
+
   Future<void> assignRole({
     required String email,
     required String role,
@@ -445,20 +457,30 @@ class AppState {
   Future<void> revokeAccess(String email) =>
       _accessControlService.revokeAccess(email);
 
-  Future<void> acknowledgeAlert(String id) async {
+  Future<void> setAlertRead(String id, bool read) async {
     if (_disposed) return;
     alerts.value = [
       for (final alert in alerts.value)
-        if (alert.id == id) alert.copyWith(acknowledged: true) else alert,
+        if (alert.id == id) alert.copyWith(acknowledged: read) else alert,
     ];
     await _persistAlerts();
   }
+
+  Future<void> acknowledgeAlert(String id) => setAlertRead(id, true);
 
   Future<void> acknowledgeAllAlerts() async {
     if (_disposed) return;
     alerts.value = [
       for (final alert in alerts.value) alert.copyWith(acknowledged: true),
     ];
+    await _persistAlerts();
+  }
+
+  Future<void> deleteAlert(String id) async {
+    if (_disposed) return;
+    alerts.value = alerts.value
+        .where((alert) => alert.id != id)
+        .toList(growable: false);
     await _persistAlerts();
   }
 
