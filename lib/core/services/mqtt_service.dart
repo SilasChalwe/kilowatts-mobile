@@ -474,12 +474,9 @@ class MqttService {
       'commandId': commandId,
       'action': 'SET_VALUES',
       'values': {
-        if (batteryVoltageVolts != null)
-          'batteryVoltageVolts': batteryVoltageVolts,
-        if (batteryCurrentAmps != null)
-          'batteryCurrentAmps': batteryCurrentAmps,
-        if (stateOfChargePercent != null)
-          'stateOfChargePercent': stateOfChargePercent,
+        'batteryVoltageVolts': ?batteryVoltageVolts,
+        'batteryCurrentAmps': ?batteryCurrentAmps,
+        'stateOfChargePercent': ?stateOfChargePercent,
       },
     });
   }
