@@ -22,8 +22,8 @@ class StatusBadge extends StatelessWidget {
   final String label;
   final StatusTone tone;
 
-  /// Kept for source compatibility with the original component API. The
-  /// visual cue is now a tone-specific icon rather than a color-only dot.
+  /// Kept for source compatibility. When enabled the badge now shows a
+  /// tone-specific icon instead of a colour-only dot.
   final bool showDot;
 
   Color get _color {
@@ -52,7 +52,7 @@ class StatusBadge extends StatelessWidget {
       case StatusTone.info:
         return Icons.info_outline_rounded;
       case StatusTone.neutral:
-        return Icons.circle_outlined;
+        return Icons.remove_circle_outline_rounded;
     }
   }
 
@@ -60,32 +60,35 @@ class StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _color;
     return Semantics(
+      container: true,
       label: label,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: 5,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.18)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showDot) ...[
-              Icon(_icon, size: 14, color: color),
-              const SizedBox(width: AppSpacing.xxs),
-            ],
-            Text(
-              label,
-              style: AppTextStyles.caption.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 5,
+          ),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            border: Border.all(color: color.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showDot) ...[
+                Icon(_icon, size: 13, color: color),
+                const SizedBox(width: AppSpacing.xxs),
+              ],
+              Text(
+                label,
+                style: AppTextStyles.caption.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

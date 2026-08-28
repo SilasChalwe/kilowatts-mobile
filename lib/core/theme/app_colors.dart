@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 
 /// Kilowatts product colour system.
 ///
-/// The UI deliberately uses a restrained enterprise palette: neutral surfaces
-/// carry most of the interface while teal is reserved for primary actions,
-/// focus and selected navigation. Semantic colours are never used as decoration.
+/// Accessibility rules:
+/// - Normal text colours meet WCAG AA contrast on the light surfaces where
+///   they are used.
+/// - Semantic colours reinforce meaning but never carry meaning by themselves;
+///   status UI must also use text, icons, labels or shape.
+/// - Teal is reserved for product actions, focus and selection rather than
+///   being reused as generic status decoration.
 abstract final class AppColors {
   static const Color background = Color(0xFFF4F7F7);
   static const Color surface = Color(0xFFFFFFFF);
@@ -14,7 +18,7 @@ abstract final class AppColors {
 
   static const Color textPrimary = Color(0xFF102124);
   static const Color textSecondary = Color(0xFF5E6D70);
-  static const Color textTertiary = Color(0xFF7E8B8E);
+  static const Color textTertiary = Color(0xFF6A777A);
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
   static const Color primary = Color(0xFF0F6F78);
@@ -35,7 +39,7 @@ abstract final class AppColors {
   static const Color errorSoft = Color(0xFFFDEDEA);
   static const Color info = Color(0xFF275EA8);
   static const Color infoSoft = Color(0xFFEDF3FB);
-  static const Color offline = Color(0xFF8C999C);
+  static const Color offline = Color(0xFF667579);
 
   static const Color sidebar = Color(0xFF102124);
   static const Color sidebarMuted = Color(0xFF1A3034);
