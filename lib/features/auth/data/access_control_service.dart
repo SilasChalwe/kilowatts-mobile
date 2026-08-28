@@ -42,10 +42,15 @@ class KilowattsUserAccess {
 
   String get initials {
     final name = fullName?.trim() ?? '';
-    if (name.isEmpty) return email.substring(0, 1).toUpperCase();
-    final parts = name.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    final source = name.isEmpty ? email : name;
+    final parts = source
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'.toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
   }
 
   String get roleLabel {
@@ -110,7 +115,7 @@ class AccessControlService {
     );
   }
 
-  /// Live installer view of the Firestore user directory. This intentionally
+  /// Live installer view of the Firestore user directory. The UI intentionally
   /// does not invent local fallback users when Firestore has not returned data.
   Stream<List<KilowattsUserAccess>> watchUsers() {
     return _users.snapshots().map((snapshot) {
@@ -124,13 +129,17 @@ class AccessControlService {
           phoneNumber: _optionalString(data['phoneNumber']),
         );
       }).toList();
-      users.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+      users.sort(
+        (a, b) => a.displayName
+            .toLowerCase()
+            .compareTo(b.displayName.toLowerCase()),
+      );
       return users;
     });
   }
 
   /// Registers a user or updates an existing user's profile/access record.
-  /// Only installers are allowed to call this successfully by Firestore rules.
+  /// Firestore rules allow this only for an existing installer account.
   Future<void> saveUser({
     required String email,
     required String fullName,
@@ -171,22 +180,34 @@ class AccessControlService {
     }, SetOptions(merge: true));
   }
 
-  /// Backwards-compatible role-only API used by older call sites/tests.
+  /// Role-only update retained for existing setup/integration call sites.
+  /// It never fabricates missing name or phone profile values.
   Future<void> assignRole({
     required String email,
     required String role,
     String? installationId,
-  }) async {
-    final existing = await _users.doc(_docIdFor(email)).get();
-    final data = existing.data() ?? const <String, dynamic>{};
-    await saveUser(
-      email: email,
-      fullName: _optionalString(data['fullName']) ?? email.split('@').first,
-      phoneNumber: _optionalString(data['phoneNumber']) ?? 'Not provided',
-      role: role,
-      installationId: installationId,
-    );
+  }) {
+    final normalizedEmail = _docIdFor(email);
+    final normalizedRole = role.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      throw ArgumentError('A valid account email is required.');
+    }
+    if (normalizedRole != 'installer' && normalizedRole != 'homeowner') {
+      throw ArgumentError('Role must be installer or homeowner.');
+    }
+    final installation = installationId?.trim() ?? '';
+    if (normalizedRole == 'homeowner' && installation.isEmpty) {
+      throw ArgumentError('Homeowner access requires an installation ID.');
+    }
+
+    return _users.doc(normalizedEmail).set({
+      'role': normalizedRole,
+      if (normalizedRole == 'homeowner') 'installationId': installation,
+      if (normalizedRole == 'installer') 'installationId': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
-  Future<void> revokeAccess(String email) => _users.doc(_docIdFor(email)).delete();
+  Future<void> revokeAccess(String email) =>
+      _users.doc(_docIdFor(email)).delete();
 }
