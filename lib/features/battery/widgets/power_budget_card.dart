@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/widgets/metric_card.dart';
+import '../../../core/widgets/section_card.dart';
 import '../../system/models/system_state_model.dart';
 
 class PowerBudgetCard extends StatelessWidget {
@@ -12,65 +11,33 @@ class PowerBudgetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Available Power',
-                value: Formatters.power(state.availablePowerW),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Remaining Power',
-                value: Formatters.power(state.remainingPowerW),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Estimated Load Demand',
-                value: Formatters.power(state.estimatedTotalLoadPowerW),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Committed Power',
-                value: Formatters.power(state.committedPowerW),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: MetricCard(
-                label: 'Fixed Loads',
-                value: Formatters.power(state.fixedLoadPowerW),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: MetricCard(
-                label: 'Auto Loads',
-                value: Formatters.power(state.autoLoadPowerW),
-              ),
-            ),
-          ],
-        ),
-      ],
+    return SectionCard(
+      title: 'Power allocation',
+      child: Column(
+        children: [
+          SectionRow(
+            label: 'Power budget',
+            value: Formatters.power(state.availablePowerW),
+          ),
+          SectionRow(
+            label: 'Active load power',
+            value: Formatters.power(state.estimatedTotalLoadPowerW),
+          ),
+          SectionRow(
+            label: 'Remaining power',
+            value: Formatters.power(state.remainingPowerW),
+          ),
+          const Divider(),
+          SectionRow(
+            label: 'Fixed load power',
+            value: Formatters.power(state.fixedLoadPowerW),
+          ),
+          SectionRow(
+            label: 'Automatic load power',
+            value: Formatters.power(state.autoLoadPowerW),
+          ),
+        ],
+      ),
     );
   }
 }
