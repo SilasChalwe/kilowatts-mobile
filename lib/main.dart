@@ -17,9 +17,11 @@ Future<void> main() async {
     );
 
     final localStateService = LocalStateService();
+    final authService = AuthService();
+    await authService.initializePersistence();
 
     final appState = AppState(
-      authService: AuthService(),
+      authService: authService,
       mqttService: MqttService(cache: localStateService),
       localStateService: localStateService,
     );
