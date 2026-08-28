@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   AuthService({FirebaseAuth? firebaseAuth})
@@ -9,6 +10,14 @@ class AuthService {
   Stream<User?> get userChanges => _auth.userChanges();
 
   User? get currentUser => _auth.currentUser;
+
+  /// Makes the web session survive browser/app restarts until the user
+  /// explicitly signs out. Native Firebase Auth already persists the current
+  /// user, so no additional credential storage is needed there.
+  Future<void> initializePersistence() async {
+    if (!kIsWeb) return;
+    await _auth.setPersistence(Persistence.LOCAL);
+  }
 
   Future<void> signIn({required String email, required String password}) async {
     await _auth.signInWithEmailAndPassword(
