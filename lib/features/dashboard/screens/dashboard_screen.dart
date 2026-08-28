@@ -103,7 +103,7 @@ class DashboardScreen extends StatelessWidget {
                         icon: Icons.electric_meter_outlined,
                       ),
                       MetricCard(
-                        label: 'Remaining auto budget',
+                        label: 'Remaining power',
                         value: Formatters.power(state.remainingPowerW),
                         icon: Icons.battery_saver_outlined,
                       ),
@@ -123,7 +123,7 @@ class DashboardScreen extends StatelessWidget {
                         unit: 'W',
                         minimumY: 0,
                         caption:
-                            'Fixed ON + automatic loads currently selected by Central. The newest reading is highlighted.',
+                            'Estimated power assigned to loads that are currently on. The newest reading is highlighted.',
                       );
 
                       final details = Column(
@@ -133,19 +133,19 @@ class DashboardScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 SectionRow(
-                                  label: 'Automatic budget',
+                                  label: 'Power budget',
                                   value: Formatters.power(state.availablePowerW),
                                 ),
                                 SectionRow(
-                                  label: 'Fixed loads',
+                                  label: 'Fixed load power',
                                   value: Formatters.power(state.fixedLoadPowerW),
                                 ),
                                 SectionRow(
-                                  label: 'AUTO selected',
+                                  label: 'Automatic load power',
                                   value: Formatters.power(state.autoLoadPowerW),
                                 ),
                                 SectionRow(
-                                  label: 'Remaining',
+                                  label: 'Remaining power',
                                   value: Formatters.power(state.remainingPowerW),
                                 ),
                               ],
