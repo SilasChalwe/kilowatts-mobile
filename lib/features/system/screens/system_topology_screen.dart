@@ -39,9 +39,10 @@ class SystemTopologyScreen extends StatelessWidget {
                       children: [
                         if (!hasTopology)
                           const EmptyState(
-                            icon: Icons.hub_outlined,
-                            title: 'Topology unavailable',
-                            message: 'Central has not reported the installation yet.',
+                            icon: Icons.home_work_outlined,
+                            title: 'House topology unavailable',
+                            message:
+                                'Central has not reported the house layout yet.',
                           )
                         else ...[
                           ResponsiveCardGrid(
@@ -50,8 +51,12 @@ class SystemTopologyScreen extends StatelessWidget {
                             children: [
                               MetricCard(
                                 label: 'Central node',
-                                value: topology!.central!.online ? 'Online' : 'Offline',
-                                icon: Icons.memory_outlined,
+                                value: topology!.central!.online
+                                    ? 'Online'
+                                    : 'Offline',
+                                icon: topology.central!.online
+                                    ? Icons.cloud_done_outlined
+                                    : Icons.cloud_off_outlined,
                                 valueColor: topology.central!.online
                                     ? AppColors.success
                                     : AppColors.error,
@@ -70,9 +75,11 @@ class SystemTopologyScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: AppSpacing.md),
                           SectionCard(
-                            title: 'Installation topology',
+                            title: 'House layout',
                             child: SizedBox(
-                              height: MediaQuery.sizeOf(context).width < 700 ? 430 : 520,
+                              height: MediaQuery.sizeOf(context).width < 700
+                                  ? 430
+                                  : 520,
                               child: GraphicalTopologyTree(
                                 topology: topology,
                                 loads: loads,
