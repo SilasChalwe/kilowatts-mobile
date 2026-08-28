@@ -99,6 +99,16 @@ class AccessControlService {
     return text.isEmpty ? null : text;
   }
 
+  static InstallationAccess _accessFromData(Map<String, dynamic>? data) {
+    final values = data ?? const <String, dynamic>{};
+    return InstallationAccess(
+      role: _parseRole(values['role']),
+      installationId: _optionalString(values['installationId']),
+      fullName: _optionalString(values['fullName']),
+      phoneNumber: _optionalString(values['phoneNumber']),
+    );
+  }
+
   Future<InstallationAccess> resolve(User? user) async {
     final email = user?.email;
     if (email == null) {
@@ -106,13 +116,20 @@ class AccessControlService {
     }
 
     final snapshot = await _users.doc(_docIdFor(email)).get();
-    final data = snapshot.data() ?? const <String, dynamic>{};
-    return InstallationAccess(
-      role: _parseRole(data['role']),
-      installationId: _optionalString(data['installationId']),
-      fullName: _optionalString(data['fullName']),
-      phoneNumber: _optionalString(data['phoneNumber']),
-    );
+    return _accessFromData(snapshot.data());
+  }
+
+  Stream<InstallationAccess> watchCurrent(User? user) {
+    final email = user?.email;
+    if (email == null) {
+      return Stream.value(
+        const InstallationAccess(role: KilowattsRole.unassigned),
+      );
+    }
+    return _users
+        .doc(_docIdFor(email))
+        .snapshots()
+        .map((snapshot) => _accessFromData(snapshot.data()));
   }
 
   /// Live installer view of the Firestore user directory. The UI intentionally
