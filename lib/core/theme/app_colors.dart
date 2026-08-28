@@ -43,6 +43,7 @@ abstract final class AppColors {
 
   static const Color sidebar = Color(0xFF102124);
   static const Color sidebarMuted = Color(0xFF1A3034);
+  static const Color sidebarActive = Color(0xFF294246);
   static const Color sidebarText = Color(0xFFF6FAFA);
   static const Color sidebarTextMuted = Color(0xFFAFC0C3);
 }
