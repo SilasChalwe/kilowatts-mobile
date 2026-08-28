@@ -119,12 +119,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
     switch (action) {
       case AlertCardAction.open:
         await _openAlert(alert);
+        return;
       case AlertCardAction.markRead:
         await appState.setAlertRead(alert.id, true);
+        return;
       case AlertCardAction.markUnread:
         await appState.setAlertRead(alert.id, false);
+        return;
       case AlertCardAction.delete:
         await _deleteAlert(alert);
+        return;
     }
   }
 
