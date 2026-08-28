@@ -16,35 +16,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
 
-/// AppState's default AccessControlService touches FirebaseFirestore.instance,
-/// which has no real Firebase app in a test sandbox — these tests never
-/// exercise role resolution, so an unstubbed mock just needs to exist.
 class _MockAccessControlService extends Mock implements AccessControlService {}
 
-/// Overrides only the stream getters/command methods AppState touches — the
-/// real [MqttService] owns a live broker socket, which tests must never
-/// create. Not behind an abstract interface (deliberately, per this pass's
-/// scoping) so this subclasses the concrete class instead.
 class _FakeMqttService extends MqttService {
-  // sync: true - these tests assert immediately after .add() with no await,
-  // so listeners must fire synchronously within add() rather than on a
-  // later microtask (the default for a broadcast StreamController).
-  final systemStateController = StreamController<SystemStateModel>.broadcast(sync: true);
-  final topologyController = StreamController<TopologyModel>.broadcast(sync: true);
+  final systemStateController =
+      StreamController<SystemStateModel>.broadcast(sync: true);
+  final topologyController =
+      StreamController<TopologyModel>.broadcast(sync: true);
   final loadsController = StreamController<List<LoadModel>>.broadcast(sync: true);
   final alertController = StreamController<AlertModel>.broadcast(sync: true);
-  final connectionStatusController = StreamController<MqttConnectionStatus>.broadcast(sync: true);
+  final connectionStatusController =
+      StreamController<MqttConnectionStatus>.broadcast(sync: true);
 
   @override
   Stream<SystemStateModel> get systemStateStream => systemStateController.stream;
+
   @override
   Stream<TopologyModel> get topologyStream => topologyController.stream;
+
   @override
   Stream<List<LoadModel>> get loadsStream => loadsController.stream;
+
   @override
   Stream<AlertModel> get alertStream => alertController.stream;
+
   @override
-  Stream<MqttConnectionStatus> get connectionStatusStream => connectionStatusController.stream;
+  Stream<MqttConnectionStatus> get connectionStatusStream =>
+      connectionStatusController.stream;
 
   @override
   MqttConnectionStatus get currentStatus => MqttConnectionStatus.connected;
@@ -98,7 +96,11 @@ void main() {
 
     mqtt.systemStateController.add(
       SystemStateModel.fromJson(const {
-        'battery': {'stateOfChargePercent': 55.0, 'voltageVolts': 12.4, 'currentAmps': 3.0},
+        'battery': {
+          'stateOfChargePercent': 55.0,
+          'voltageVolts': 12.4,
+          'currentAmps': 3.0,
+        },
       }),
     );
 
@@ -109,14 +111,21 @@ void main() {
     expect(appState.lastLiveSystemUpdate.value, isNotNull);
   });
 
-  test('SoC/power samples accumulate from live system-state updates', () {
+  test('SoC and battery-power history capture live system-state updates', () {
     mqtt.systemStateController.add(
       SystemStateModel.fromJson(const {
-        'battery': {'stateOfChargePercent': 60.0, 'voltageVolts': 12.0, 'currentAmps': 5.0},
+        'battery': {
+          'stateOfChargePercent': 60.0,
+          'voltageVolts': 12.0,
+          'currentAmps': 5.0,
+        },
       }),
     );
-    expect(appState.socSamples.value, [60.0]);
-    expect(appState.batteryPowerSamples.value, [60.0]); // 12.0 * 5.0
+
+    expect(appState.socHistory.value, hasLength(1));
+    expect(appState.socHistory.value.single.value, 60.0);
+    expect(appState.batteryPowerHistory.value, hasLength(1));
+    expect(appState.batteryPowerHistory.value.single.value, 60.0);
   });
 
   test('a loads message updates loads only, not systemState/topology', () {
@@ -124,7 +133,11 @@ void main() {
     appState.systemState.addListener(() => systemStateNotifications++);
 
     mqtt.loadsController.add([
-      LoadModel.fromJson(const {'nodeMac': 'AA:BB:CC:DD:EE:FF', 'relayPin': 4, 'mode': 'AUTO_ON'}),
+      LoadModel.fromJson(const {
+        'nodeMac': 'AA:BB:CC:DD:EE:FF',
+        'relayPin': 4,
+        'mode': 'AUTO_ON',
+      }),
     ]);
 
     expect(appState.loads.value, hasLength(1));
@@ -142,7 +155,11 @@ void main() {
 
   test('acknowledgeAllAlerts marks every accumulated alert acknowledged', () {
     mqtt.alertController.add(
-      AlertModel.fromJson(const {'severity': 'warning', 'category': 'LOW_BATTERY', 'message': 'test'}),
+      AlertModel.fromJson(const {
+        'severity': 'warning',
+        'category': 'LOW_BATTERY',
+        'message': 'test',
+      }),
     );
     expect(appState.alerts.value.single.acknowledged, isFalse);
 

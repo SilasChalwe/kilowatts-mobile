@@ -182,7 +182,7 @@ class GraphicalTopologyTree extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: isLoad && load != null
+                  child: load != null
                       ? _LoadTopologyContent(load: load, accent: accent)
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -208,14 +208,19 @@ class GraphicalTopologyTree extends StatelessWidget {
                         ),
                 ),
                 if (physicalNode != null)
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: physicalNode.online
-                          ? AppColors.success
-                          : AppColors.error,
-                      shape: BoxShape.circle,
+                  Semantics(
+                    label: physicalNode.online ? 'Online' : 'Offline',
+                    child: Tooltip(
+                      message: physicalNode.online ? 'Online' : 'Offline',
+                      child: Icon(
+                        physicalNode.online
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.cancel_outlined,
+                        size: 17,
+                        color: physicalNode.online
+                            ? AppColors.success
+                            : AppColors.error,
+                      ),
                     ),
                   ),
               ],

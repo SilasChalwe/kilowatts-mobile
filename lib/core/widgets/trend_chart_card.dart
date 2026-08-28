@@ -17,6 +17,7 @@ class TrendChartCard extends StatelessWidget {
     this.minimumY,
     this.maximumY,
     this.emptyTitle = 'Waiting for readings',
+    this.chartHeight = 220,
   });
 
   final String title;
@@ -26,6 +27,7 @@ class TrendChartCard extends StatelessWidget {
   final double? minimumY;
   final double? maximumY;
   final String emptyTitle;
+  final double chartHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +53,7 @@ class TrendChartCard extends StatelessWidget {
       child: ordered.length < 2
           ? Container(
               width: double.infinity,
-              height: 136,
+              height: chartHeight < 160.0 ? 160.0 : chartHeight,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: AppColors.surfaceMuted,
@@ -94,6 +96,7 @@ class TrendChartCard extends StatelessWidget {
         TelemetryLineChart(
           points: ordered,
           unit: unit,
+          height: chartHeight,
           minimumY: minimumY,
           maximumY: maximumY,
         ),

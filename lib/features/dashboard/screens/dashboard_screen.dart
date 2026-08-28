@@ -70,6 +70,9 @@ class DashboardScreen extends StatelessWidget {
             soc <= AppConstants.defaultLowBatteryWarningPercent;
         final history = _lastHour(appState.activeLoadPowerHistory.value);
         final isDevelopment = state.operatingEnvironment == 'DEVELOPMENT';
+        final batteryDetail =
+            '${Formatters.voltage(state.batteryVoltage)} · ${Formatters.current(state.batteryCurrent)}';
+        final automaticBudget = Formatters.power(state.availablePowerW);
 
         return SafeArea(
           child: SingleChildScrollView(

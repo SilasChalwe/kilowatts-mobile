@@ -79,6 +79,14 @@ class AppState {
   Future<InstallationAccess> resolveCurrentAccess() =>
       _accessControlService.resolve(currentUser);
 
+  /// Persists completion of the first-run setup workflow.
+  Future<void> setSetupComplete(bool complete) =>
+      _localState.setSetupComplete(complete);
+
+  /// Persists a user-friendly node label on this device.
+  Future<void> setNodeNameOverride(String mac, String name) =>
+      _localState.setNodeNameOverride(mac, name);
+
   void _wireMqttSubscriptions() {
     connectionStatus.value = _mqtt.currentStatus;
 
