@@ -7,7 +7,7 @@ double? _sumOrNull(double? a, double? b) {
 
 /// Parsed payload of `kilowatts/v1/state/system` — the top-level battery
 /// and power-budget snapshot, matching `SystemStateJson::build()` exactly
-/// (nested `battery`/`power`/`connectivity`/`time`/`diagnostics` objects).
+/// (nested `battery`/`powerFlow`/`connectivity`/`time`/`diagnostics` objects).
 /// Every field is nullable; a field the firmware has not published yet must
 /// render as "Unavailable", never a fabricated number.
 ///
@@ -66,21 +66,21 @@ class SystemStateModel {
   final DateTime? lastOptimizationAt;
 
   /// Firmware's `MeasurementSource` as text: "NONE", "HARDWARE" (real
-  /// INA219) or "SIMULATED" (see `measurementSourceText` in
-  /// src/central/namespace.h). Never presented ambiguously.
+  /// INA219) or "SIMULATED". Never presented ambiguously.
   final String? sensorInputSource;
 
-  /// "PRODUCTION" or "DEVELOPMENT" — the whole device's Operating
-  /// Environment, distinct from [sensorInputSource] (which is per-reading).
-  /// A device stuck in DEVELOPMENT is serving simulated readings across the
-  /// board, not just one overridden sensor, so this must be shown wherever
-  /// [sensorInputSource] or any live number is shown, never inferred from it.
+  /// Reserved for a future firmware field. Current production firmware does
+  /// not publish the operating environment in `state/system`.
   final String? operatingEnvironment;
 
-  /// True only while an explicit Development Session is armed on Central.
+  /// Reserved for a future firmware field. Current production firmware does
+  /// not publish development-session state in `state/system`.
   final bool? developmentSessionActive;
 
+  /// Current firmware publishes this as diagnostics.pinCommandErrorCount.
   final int? faultCount;
+
+  /// Reserved for a future firmware summary field.
   final String? faultSummary;
 
   /// When this snapshot was received locally — used to decide staleness,
@@ -96,8 +96,6 @@ class SystemStateModel {
 
   factory SystemStateModel.fromJson(Map<String, dynamic> json) {
     final battery = json.mapOrNull('battery') ?? const {};
-    // Firmware (SystemStateJson::build) emits this object under the key
-    // "powerFlow", not "power" — see lib/MqttManager/SystemStateJson.cpp.
     final power = json.mapOrNull('powerFlow') ?? const {};
     final connectivity = json.mapOrNull('connectivity') ?? const {};
     final time = json.mapOrNull('time') ?? const {};
@@ -135,15 +133,11 @@ class SystemStateModel {
           ? null
           : time.dateTimeOrNull('lastOptimizationEpochSeconds'),
       sensorInputSource: battery.stringOrNull('measurementSource'),
-      // Firmware does not currently publish operatingEnvironment,
-      // developmentSessionActive, faultCount or faultSummary anywhere
-      // (see lib/MqttManager/SystemStateJson.cpp) — these remain null
-      // until that is implemented. Do not treat their absence as false/0.
       operatingEnvironment: diagnostics.stringOrNull('operatingEnvironment'),
       developmentSessionActive: diagnostics.boolOrNull(
         'developmentSessionActive',
       ),
-      faultCount: diagnostics.intOrNull('faultCount'),
+      faultCount: diagnostics.intOrNull('pinCommandErrorCount'),
       faultSummary: diagnostics.stringOrNull('faultSummary'),
       receivedAt: DateTime.now(),
     );
