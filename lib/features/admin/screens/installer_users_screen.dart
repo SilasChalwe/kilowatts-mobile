@@ -50,7 +50,10 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       onError: (Object error) {
         if (!mounted) return;
         setState(() {
-          _users = const [];
+          // Firestore can emit a cached snapshot before a later network/server
+          // error. Never erase a directory that has already been received just
+          // because a subsequent refresh fails. The full error state is only
+          // appropriate when no usable user data has ever been available.
           _loading = false;
           _loadError = error;
         });
@@ -62,8 +65,9 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     await _subscription?.cancel();
     if (!mounted) return;
     setState(() {
-      _users = const [];
-      _loading = true;
+      // Keep the last valid Firestore snapshot visible while the stream is
+      // being re-established. Do not flash an empty/error page during retry.
+      _loading = _users.isEmpty;
       _loadError = null;
     });
     _subscribe();
@@ -104,7 +108,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       if (!mounted) return;
       final message = error is ArgumentError
           ? error.message?.toString() ?? 'Invalid user details.'
-          : 'Could not save this user in Firebase.';
+          : 'Could not save this user.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
@@ -119,7 +123,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Revoke access?'),
         content: Text(
-          '${user.displayName} will no longer have Kilowatts access. Their Firebase authentication account is not deleted.',
+          '${user.displayName} will no longer have Kilowatts access. Their sign-in account is not deleted.',
         ),
         actions: [
           TextButton(
@@ -153,6 +157,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
   Widget _content(BuildContext context) {
     final currentEmail =
         AppStateScope.of(context).currentUser?.email?.toLowerCase();
+    final hasUsers = _users.isNotEmpty;
 
     return ListView(
       children: [
@@ -165,7 +170,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Firebase user directory',
+                      'User directory',
                       style: AppTextStyles.sectionTitle,
                     ),
                   ),
@@ -178,35 +183,33 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Installers manage user profile details, roles and installation access here.',
+                'Manage user details, roles and installation access.',
                 style: AppTextStyles.caption,
               ),
               const SizedBox(height: AppSpacing.md),
-              if (_loading)
+              if (_loading && !hasUsers)
                 const SectionCard(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
                     child: Center(child: CircularProgressIndicator()),
                   ),
                 )
-              else if (_loadError != null)
+              else if (_loadError != null && !hasUsers)
                 EmptyState(
                   icon: Icons.cloud_off_outlined,
-                  title: 'Firebase users unavailable',
-                  message:
-                      'The user directory could not be loaded from Firestore.',
+                  title: 'User directory unavailable',
+                  message: 'The user directory could not be loaded.',
                   action: OutlinedButton.icon(
                     onPressed: _retry,
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: const Text('Retry'),
                   ),
                 )
-              else if (_users.isEmpty)
+              else if (!hasUsers)
                 EmptyState(
                   icon: Icons.group_add_outlined,
                   title: 'No users registered',
-                  message:
-                      'Add the first user profile and access record to Firestore.',
+                  message: 'Add the first user profile and access record.',
                   action: FilledButton.icon(
                     onPressed: () => _openEditor(),
                     icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
@@ -546,12 +549,10 @@ class _UserRow extends StatelessWidget {
               PopupMenuItem(
                 value: _UserAction.revoke,
                 enabled: !isCurrent,
-                child: ListTile(
+                child: const ListTile(
                   dense: true,
-                  leading: const Icon(Icons.person_remove_outlined),
-                  title: Text(
-                    isCurrent ? 'Current account' : 'Revoke access',
-                  ),
+                  leading: Icon(Icons.person_remove_outlined),
+                  title: Text('Revoke access'),
                 ),
               ),
             ],
@@ -579,7 +580,7 @@ class _YouBadge extends StatelessWidget {
         'You',
         style: AppTextStyles.caption.copyWith(
           color: AppColors.info,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
