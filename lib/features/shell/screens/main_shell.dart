@@ -73,6 +73,7 @@ class _MainShellState extends State<MainShell> {
         icon: Icons.notifications_outlined,
         selectedIcon: Icons.notifications_rounded,
         page: AlertsScreen(),
+        showUnreadBadge: true,
       ),
       const _ProductDestination(
         label: 'Battery & power',
@@ -306,6 +307,7 @@ class _ProductDestination {
     required this.page,
     this.installerOnly = false,
     this.showLiveStatus = true,
+    this.showUnreadBadge = false,
   });
 
   final String label;
@@ -314,6 +316,7 @@ class _ProductDestination {
   final Widget page;
   final bool installerOnly;
   final bool showLiveStatus;
+  final bool showUnreadBadge;
 }
 
 class _NavigationPanel extends StatelessWidget {
@@ -454,11 +457,17 @@ class _NavigationPanel extends StatelessWidget {
   }
 
   static String _initials(String? name, String? email) {
-    final source = name?.trim().isNotEmpty == true ? name!.trim() : email?.trim() ?? '';
+    final source = name?.trim().isNotEmpty == true
+        ? name!.trim()
+        : email?.trim() ?? '';
     if (source.isEmpty) return '?';
-    final parts = source.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    final parts = source
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'.toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
   }
 }
 
@@ -500,6 +509,37 @@ class _SidebarDestination extends StatelessWidget {
                     style: AppTextStyles.label.copyWith(color: foreground),
                   ),
                 ),
+                if (destination.showUnreadBadge)
+                  ValueListenableBuilder(
+                    valueListenable: AppStateScope.of(context).alerts,
+                    builder: (context, alerts, _) {
+                      final unread = alerts
+                          .where((alert) => !alert.acknowledged)
+                          .length;
+                      if (unread == 0) return const SizedBox.shrink();
+                      return Container(
+                        constraints: const BoxConstraints(minWidth: 22),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected ? Colors.white : AppColors.error,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          unread > 99 ? '99+' : '$unread',
+                          style: AppTextStyles.caption.copyWith(
+                            color: selected
+                                ? AppColors.sidebarActive
+                                : Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
