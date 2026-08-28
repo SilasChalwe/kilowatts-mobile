@@ -6,6 +6,7 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -25,7 +26,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
   List<KilowattsUserAccess> _users = const [];
   bool _loading = true;
   bool _subscribed = false;
-  Object? _refreshError;
+  Object? _loadError;
 
   @override
   void didChangeDependencies() {
@@ -43,14 +44,15 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
         setState(() {
           _users = List.unmodifiable(users);
           _loading = false;
-          _refreshError = null;
+          _loadError = null;
         });
       },
       onError: (Object error) {
         if (!mounted) return;
         setState(() {
+          _users = const [];
           _loading = false;
-          _refreshError = error;
+          _loadError = error;
         });
       },
     );
@@ -60,8 +62,9 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     await _subscription?.cancel();
     if (!mounted) return;
     setState(() {
-      _loading = _users.isEmpty;
-      _refreshError = null;
+      _users = const [];
+      _loading = true;
+      _loadError = null;
     });
     _subscribe();
   }
@@ -80,26 +83,35 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     if (result == null || !mounted) return;
 
     try {
-      await AppStateScope.of(context).assignRole(
+      await AppStateScope.of(context).saveAccessUser(
         email: result.email,
+        fullName: result.fullName,
+        phoneNumber: result.phoneNumber,
         role: result.role,
         installationId: result.installationId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Access saved for ${result.email}.')),
+        SnackBar(
+          content: Text(
+            existing == null
+                ? '${result.fullName} added to Kilowatts.'
+                : '${result.fullName} updated.',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
       final message = error is ArgumentError
-          ? error.message?.toString() ?? 'Invalid access configuration.'
-          : 'Could not save access.';
+          ? error.message?.toString() ?? 'Invalid user details.'
+          : 'Could not save this user in Firebase.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
   Future<void> _revoke(KilowattsUserAccess user) async {
-    final currentEmail = AppStateScope.of(context).currentUser?.email?.toLowerCase();
+    final currentEmail =
+        AppStateScope.of(context).currentUser?.email?.toLowerCase();
     if (user.email.toLowerCase() == currentEmail) return;
 
     final confirmed = await showDialog<bool>(
@@ -107,7 +119,7 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Revoke access?'),
         content: Text(
-          '${user.email} will no longer be able to access this Kilowatts installation.',
+          '${user.displayName} will no longer have Kilowatts access. Their Firebase authentication account is not deleted.',
         ),
         actions: [
           TextButton(
@@ -128,115 +140,96 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       await AppStateScope.of(context).revokeAccess(user.email);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Access revoked for ${user.email}.')),
+        SnackBar(content: Text('Access revoked for ${user.displayName}.')),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not revoke access.')),
+        const SnackBar(content: Text('Could not revoke this user.')),
       );
     }
   }
 
-  List<KilowattsUserAccess> _visibleUsers(BuildContext context) {
-    if (_users.isNotEmpty) return _users;
-    final email = AppStateScope.of(context).currentUser?.email;
-    if (email == null || email.isEmpty) return const [];
-    return [
-      KilowattsUserAccess(
-        email: email.toLowerCase(),
-        role: KilowattsRole.installer,
-      ),
-    ];
-  }
-
   Widget _content(BuildContext context) {
-    final appState = AppStateScope.of(context);
-    final currentEmail = appState.currentUser?.email;
-    final visibleUsers = _visibleUsers(context);
+    final currentEmail =
+        AppStateScope.of(context).currentUser?.email?.toLowerCase();
 
     return ListView(
       children: [
         ResponsiveContent(
-          maxWidth: 1050,
+          maxWidth: 1180,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _openEditor,
-                  icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                  label: const Text('Add user'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Firebase user directory',
+                      style: AppTextStyles.sectionTitle,
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _openEditor(),
+                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                    label: const Text('Add user'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Installers manage user profile details, roles and installation access here.',
+                style: AppTextStyles.caption,
               ),
               const SizedBox(height: AppSpacing.md),
-              if (_refreshError != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                    vertical: AppSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.warningSoft,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.sync_problem_outlined,
-                        size: 18,
-                        color: AppColors.warning,
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      const Expanded(
-                        child: Text(
-                          'Could not refresh all access records. Showing the last known accounts.',
-                          style: AppTextStyles.caption,
-                        ),
-                      ),
-                      TextButton(onPressed: _retry, child: const Text('Retry')),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              if (_loading && _users.isEmpty && visibleUsers.isEmpty)
+              if (_loading)
                 const SectionCard(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: AppSpacing.sm),
-                        Text('Loading users…'),
-                      ],
-                    ),
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (_loadError != null)
+                EmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Firebase users unavailable',
+                  message:
+                      'The user directory could not be loaded from Firestore.',
+                  action: OutlinedButton.icon(
+                    onPressed: _retry,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Retry'),
+                  ),
+                )
+              else if (_users.isEmpty)
+                EmptyState(
+                  icon: Icons.group_add_outlined,
+                  title: 'No users registered',
+                  message:
+                      'Add the first user profile and access record to Firestore.',
+                  action: FilledButton.icon(
+                    onPressed: () => _openEditor(),
+                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                    label: const Text('Add user'),
                   ),
                 )
               else
                 SectionCard(
-                  title: 'Accounts',
-                  trailing: Text(
-                    '${visibleUsers.length}',
-                    style: AppTextStyles.caption,
-                  ),
+                  padding: EdgeInsets.zero,
                   child: Column(
                     children: [
-                      for (var index = 0; index < visibleUsers.length; index++) ...[
-                        _UserTile(
-                          user: visibleUsers[index],
-                          isCurrent: visibleUsers[index].email.toLowerCase() ==
-                              currentEmail?.toLowerCase(),
-                          onEdit: () => _openEditor(visibleUsers[index]),
-                          onRevoke: () => _revoke(visibleUsers[index]),
+                      _DirectoryHeader(count: _users.length),
+                      const Divider(height: 1),
+                      for (var index = 0; index < _users.length; index++) ...[
+                        _UserRow(
+                          user: _users[index],
+                          isCurrent:
+                              _users[index].email.toLowerCase() == currentEmail,
+                          onEdit: () => _openEditor(_users[index]),
+                          onRevoke: () => _revoke(_users[index]),
                         ),
-                        if (index != visibleUsers.length - 1) const Divider(),
+                        if (index != _users.length - 1)
+                          const Divider(height: 1),
                       ],
                     ],
                   ),
@@ -261,14 +254,41 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
   }
 }
 
+class _DirectoryHeader extends StatelessWidget {
+  const _DirectoryHeader({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Text('Users', style: AppTextStyles.label),
+          const Spacer(),
+          Text('$count total', style: AppTextStyles.caption),
+        ],
+      ),
+    );
+  }
+}
+
 class _AccessDraft {
   const _AccessDraft({
     required this.email,
+    required this.fullName,
+    required this.phoneNumber,
     required this.role,
     this.installationId,
   });
 
   final String email;
+  final String fullName;
+  final String phoneNumber;
   final String role;
   final String? installationId;
 }
@@ -285,6 +305,8 @@ class _AccessEditorDialog extends StatefulWidget {
 class _AccessEditorDialogState extends State<_AccessEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _email;
+  late final TextEditingController _fullName;
+  late final TextEditingController _phone;
   late final TextEditingController _installation;
   late String _role;
 
@@ -292,6 +314,8 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
   void initState() {
     super.initState();
     _email = TextEditingController(text: widget.existing?.email ?? '');
+    _fullName = TextEditingController(text: widget.existing?.fullName ?? '');
+    _phone = TextEditingController(text: widget.existing?.phoneNumber ?? '');
     _installation = TextEditingController(
       text: widget.existing?.installationId ?? '',
     );
@@ -303,6 +327,8 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
   @override
   void dispose() {
     _email.dispose();
+    _fullName.dispose();
+    _phone.dispose();
     _installation.dispose();
     super.dispose();
   }
@@ -311,7 +337,9 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     Navigator.of(context).pop(
       _AccessDraft(
-        email: _email.text.trim(),
+        email: _email.text.trim().toLowerCase(),
+        fullName: _fullName.text.trim(),
+        phoneNumber: _phone.text.trim(),
         role: _role,
         installationId: _role == 'homeowner'
             ? _installation.text.trim()
@@ -323,46 +351,72 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existing == null ? 'Add user' : 'Edit access'),
+      title: Text(widget.existing == null ? 'Add user' : 'Edit user'),
       content: SizedBox(
-        width: 500,
+        width: 520,
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _email,
-                enabled: widget.existing == null,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  final email = value?.trim() ?? '';
-                  return email.contains('@') ? null : 'Enter a valid email.';
-                },
-              ),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: _role,
-                decoration: const InputDecoration(labelText: 'Role'),
-                items: const [
-                  DropdownMenuItem(value: 'homeowner', child: Text('Homeowner')),
-                  DropdownMenuItem(value: 'installer', child: Text('Installer')),
-                ],
-                onChanged: (value) => setState(() => _role = value!),
-              ),
-              if (_role == 'homeowner') ...[
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _fullName,
+                  decoration: const InputDecoration(labelText: 'Full name'),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (value) => (value?.trim().length ?? 0) >= 2
+                      ? null
+                      : 'Enter the user name.',
+                ),
                 const SizedBox(height: AppSpacing.md),
                 TextFormField(
-                  controller: _installation,
-                  decoration: const InputDecoration(labelText: 'Installation ID'),
-                  validator: (value) => value?.trim().isNotEmpty == true
-                      ? null
-                      : 'Installation ID is required.',
+                  controller: _email,
+                  enabled: widget.existing == null,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    final email = value?.trim() ?? '';
+                    return email.contains('@') ? null : 'Enter a valid email.';
+                  },
                 ),
+                const SizedBox(height: AppSpacing.md),
+                TextFormField(
+                  controller: _phone,
+                  decoration: const InputDecoration(labelText: 'Phone number'),
+                  keyboardType: TextInputType.phone,
+                  validator: (value) => (value?.trim().length ?? 0) >= 7
+                      ? null
+                      : 'Enter a valid phone number.',
+                ),
+                const SizedBox(height: AppSpacing.md),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  decoration: const InputDecoration(labelText: 'Role'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'homeowner',
+                      child: Text('Homeowner'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'installer',
+                      child: Text('Installer'),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _role = value!),
+                ),
+                if (_role == 'homeowner') ...[
+                  const SizedBox(height: AppSpacing.md),
+                  TextFormField(
+                    controller: _installation,
+                    decoration:
+                        const InputDecoration(labelText: 'Installation ID'),
+                    validator: (value) => value?.trim().isNotEmpty == true
+                        ? null
+                        : 'Installation ID is required.',
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -371,14 +425,14 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _save, child: const Text('Save')),
+        FilledButton(onPressed: _save, child: const Text('Save user')),
       ],
     );
   }
 }
 
-class _UserTile extends StatelessWidget {
-  const _UserTile({
+class _UserRow extends StatelessWidget {
+  const _UserRow({
     required this.user,
     required this.isCurrent,
     required this.onEdit,
@@ -395,22 +449,27 @@ class _UserTile extends StatelessWidget {
     final isInstaller = user.role == KilowattsRole.installer;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
-            radius: 20,
+            radius: 22,
             backgroundColor: AppColors.primarySoft,
-            child: Icon(
-              isInstaller
-                  ? Icons.admin_panel_settings_outlined
-                  : Icons.home_outlined,
-              size: 20,
-              color: AppColors.primary,
+            child: Text(
+              user.initials,
+              style: AppTextStyles.label.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
+            flex: 3,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -418,7 +477,7 @@ class _UserTile extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        user.email,
+                        user.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTextStyles.label,
@@ -430,26 +489,45 @@ class _UserTile extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    StatusBadge(
-                      label: isInstaller ? 'Installer' : 'Homeowner',
-                      tone: isInstaller ? StatusTone.info : StatusTone.neutral,
-                    ),
-                    if (!isInstaller && user.installationId != null)
-                      Text(
-                        user.installationId!,
-                        style: AppTextStyles.caption,
-                      ),
-                  ],
+                const SizedBox(height: 3),
+                Text(
+                  user.email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption,
                 ),
               ],
             ),
           ),
+          if (MediaQuery.sizeOf(context).width >= 760) ...[
+            Expanded(
+              flex: 2,
+              child: Text(
+                user.phoneNumber ?? 'Phone not recorded',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption,
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: StatusBadge(
+                  label: isInstaller ? 'Installer' : 'Homeowner',
+                  tone: isInstaller ? StatusTone.info : StatusTone.neutral,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                user.installationId ?? 'All installations',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption,
+              ),
+            ),
+          ],
           PopupMenuButton<_UserAction>(
             tooltip: 'User actions',
             onSelected: (action) {
@@ -459,12 +537,22 @@ class _UserTile extends StatelessWidget {
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: _UserAction.edit,
-                child: Text('Edit access'),
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edit user'),
+                ),
               ),
               PopupMenuItem(
                 value: _UserAction.revoke,
                 enabled: !isCurrent,
-                child: Text(isCurrent ? 'Current account' : 'Revoke access'),
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.person_remove_outlined),
+                  title: Text(
+                    isCurrent ? 'Current account' : 'Revoke access',
+                  ),
+                ),
               ),
             ],
           ),
