@@ -48,6 +48,7 @@ class AppState {
   final AccessControlService _accessControlService;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Timer? _historyPersistTimer;
+  bool _disposed = false;
 
   final ValueNotifier<MqttConnectionStatus> connectionStatus = ValueNotifier(
     MqttConnectionStatus.disconnected,
@@ -69,6 +70,7 @@ class AppState {
       ValueNotifier(const []);
 
   bool get isSystemStateLive =>
+      !_disposed &&
       connectionStatus.value == MqttConnectionStatus.connected &&
       lastLiveSystemUpdate.value != null &&
       DateTime.now().difference(lastLiveSystemUpdate.value!) <
@@ -91,12 +93,14 @@ class AppState {
     connectionStatus.value = _mqtt.currentStatus;
 
     _subscriptions.add(
-      _mqtt.connectionStatusStream.listen(
-        (status) => connectionStatus.value = status,
-      ),
+      _mqtt.connectionStatusStream.listen((status) {
+        if (_disposed) return;
+        connectionStatus.value = status;
+      }),
     );
     _subscriptions.add(
       _mqtt.systemStateStream.listen((state) {
+        if (_disposed) return;
         systemState.value = state;
         lastLiveSystemUpdate.value = DateTime.now();
         _appendHistoryPoint(socHistory, state.batterySocPercent);
@@ -108,13 +112,20 @@ class AppState {
       }),
     );
     _subscriptions.add(
-      _mqtt.topologyStream.listen((value) => topology.value = value),
+      _mqtt.topologyStream.listen((value) {
+        if (_disposed) return;
+        topology.value = value;
+      }),
     );
     _subscriptions.add(
-      _mqtt.loadsStream.listen((value) => loads.value = value),
+      _mqtt.loadsStream.listen((value) {
+        if (_disposed) return;
+        loads.value = value;
+      }),
     );
     _subscriptions.add(
       _mqtt.alertStream.listen((alert) {
+        if (_disposed) return;
         final next = <AlertModel>[alert, ...alerts.value];
         alerts.value = next.length > _maxStoredAlerts
             ? next.sublist(0, _maxStoredAlerts)
@@ -123,7 +134,10 @@ class AppState {
       }),
     );
     _subscriptions.add(
-      _mqtt.installerNodesStream.listen((nodes) => installerNodes.value = nodes),
+      _mqtt.installerNodesStream.listen((nodes) {
+        if (_disposed) return;
+        installerNodes.value = nodes;
+      }),
     );
   }
 
@@ -131,7 +145,7 @@ class AppState {
     ValueNotifier<List<TelemetryPoint>> notifier,
     double? value,
   ) {
-    if (value == null || !value.isFinite) return;
+    if (_disposed || value == null || !value.isFinite) return;
 
     final now = DateTime.now();
     final next = [...notifier.value];
@@ -210,7 +224,7 @@ class AppState {
   }
 
   void _scheduleHistoryPersist() {
-    if (_historyPersistTimer?.isActive ?? false) return;
+    if (_disposed || (_historyPersistTimer?.isActive ?? false)) return;
     _historyPersistTimer = Timer(
       _historyPersistDelay,
       () => unawaited(_persistTelemetryHistory()),
@@ -218,22 +232,30 @@ class AppState {
   }
 
   Future<void> _persistTelemetryHistory() async {
+    if (_disposed) return;
+    final socSnapshot = List<TelemetryPoint>.of(socHistory.value);
+    final batterySnapshot = List<TelemetryPoint>.of(batteryPowerHistory.value);
+    final loadSnapshot = List<TelemetryPoint>.of(activeLoadPowerHistory.value);
     await Future.wait([
-      _localState.cacheSocHistory(socHistory.value),
-      _localState.cacheBatteryPowerHistory(batteryPowerHistory.value),
-      _localState.cacheActiveLoadPowerHistory(activeLoadPowerHistory.value),
+      _localState.cacheSocHistory(socSnapshot),
+      _localState.cacheBatteryPowerHistory(batterySnapshot),
+      _localState.cacheActiveLoadPowerHistory(loadSnapshot),
     ]);
   }
 
   Future<void> _loadCachedSnapshot() async {
+    if (_disposed) return;
+
     if (systemState.value == null) {
       final cached = await _localState.readCachedSystemState();
+      if (_disposed) return;
       if (cached != null && systemState.value == null) {
         systemState.value = SystemStateModel.fromJson(cached);
       }
     }
 
     final cachedAlerts = await _localState.readCachedAlerts();
+    if (_disposed) return;
     if (cachedAlerts != null && alerts.value.isEmpty) {
       alerts.value = cachedAlerts.map(AlertModel.fromJson).toList();
     }
@@ -243,6 +265,8 @@ class AppState {
       _localState.readBatteryPowerHistory(),
       _localState.readActiveLoadPowerHistory(),
     ]);
+    if (_disposed) return;
+
     socHistory.value = _mergeHistory(histories[0], socHistory.value);
     batteryPowerHistory.value = _mergeHistory(
       histories[1],
@@ -422,6 +446,7 @@ class AppState {
       _accessControlService.revokeAccess(email);
 
   Future<void> acknowledgeAlert(String id) async {
+    if (_disposed) return;
     alerts.value = [
       for (final alert in alerts.value)
         if (alert.id == id) alert.copyWith(acknowledged: true) else alert,
@@ -430,6 +455,7 @@ class AppState {
   }
 
   Future<void> acknowledgeAllAlerts() async {
+    if (_disposed) return;
     alerts.value = [
       for (final alert in alerts.value) alert.copyWith(acknowledged: true),
     ];
@@ -444,10 +470,24 @@ class AppState {
   }
 
   void dispose() {
+    if (_disposed) return;
+
+    final socSnapshot = List<TelemetryPoint>.of(socHistory.value);
+    final batterySnapshot = List<TelemetryPoint>.of(batteryPowerHistory.value);
+    final loadSnapshot = List<TelemetryPoint>.of(activeLoadPowerHistory.value);
+
+    _disposed = true;
     _historyPersistTimer?.cancel();
-    unawaited(_persistTelemetryHistory());
+    unawaited(
+      Future.wait([
+        _localState.cacheSocHistory(socSnapshot),
+        _localState.cacheBatteryPowerHistory(batterySnapshot),
+        _localState.cacheActiveLoadPowerHistory(loadSnapshot),
+      ]),
+    );
+
     for (final subscription in _subscriptions) {
-      subscription.cancel();
+      unawaited(subscription.cancel());
     }
     connectionStatus.dispose();
     systemState.dispose();
