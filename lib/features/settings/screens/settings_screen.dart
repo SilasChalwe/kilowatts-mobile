@@ -59,14 +59,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           future: _profile,
           builder: (context, snapshot) {
             final profile = snapshot.data;
-            final profileLoaded =
+            final loadedProfile =
                 snapshot.connectionState == ConnectionState.done &&
-                !snapshot.hasError &&
-                profile != null;
-            final fullName = profileLoaded ? profile?.fullName : null;
-            final phoneNumber = profileLoaded ? profile?.phoneNumber : null;
-            final installationId = profileLoaded ? profile?.installationId : null;
-            final role = profileLoaded ? profile?.role : null;
+                    !snapshot.hasError
+                ? profile
+                : null;
+            final fullName = loadedProfile?.fullName;
+            final phoneNumber = loadedProfile?.phoneNumber;
+            final installationId = loadedProfile?.installationId;
+            final role = loadedProfile?.role;
 
             final account = SectionCard(
               title: 'Account',
@@ -119,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: AppSpacing.xs),
                   SectionRow(
                     label: 'Phone',
-                    value: profileLoaded
+                    value: loadedProfile != null
                         ? phoneNumber ?? 'Not recorded'
                         : snapshot.hasError
                             ? 'Profile unavailable'
@@ -310,7 +311,7 @@ class _SettingsRow extends StatelessWidget {
               if (onTap != null)
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: destructive ? AppColors.error : AppColors.textMuted,
+                  color: destructive ? AppColors.error : AppColors.textSecondary,
                 ),
             ],
           ),
