@@ -10,7 +10,9 @@ import '../../../core/widgets/kilowatts_logo.dart';
 import '../../admin/screens/installer_console_screen.dart';
 import '../../admin/screens/installer_operations_screen.dart';
 import '../../admin/screens/installer_users_screen.dart';
+import '../../alerts/models/alert_model.dart';
 import '../../alerts/screens/alerts_screen.dart';
+import '../../auth/data/access_control_service.dart';
 import '../../battery/screens/battery_power_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../history/screens/history_screen.dart';
@@ -336,7 +338,6 @@ class _NavigationPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
     final firstInstaller = destinations.indexWhere((item) => item.installerOnly);
-    final user = appState.currentUser;
 
     return ColoredBox(
       color: AppColors.sidebar,
@@ -397,63 +398,87 @@ class _NavigationPanel extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: AppColors.sidebarMuted,
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.primary,
-                    child: Text(
-                      _initials(user?.displayName, user?.email),
-                      style: AppTextStyles.caption.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+            child: FutureBuilder<InstallationAccess>(
+              future: appState.resolveCurrentAccess(),
+              builder: (context, snapshot) {
+                final profile = snapshot.data;
+                final email = appState.currentUser?.email;
+                final name = profile?.fullName?.trim();
+                final displayName = name?.isNotEmpty == true
+                    ? name!
+                    : email ?? 'Signed in';
+                final roleLabel = profile == null
+                    ? (installerMode ? 'Installer' : 'Homeowner')
+                    : _roleLabel(profile.role);
+
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.sidebarMuted,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user?.displayName?.trim().isNotEmpty == true
-                              ? user!.displayName!.trim()
-                              : user?.email ?? 'Signed in',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.label.copyWith(
-                            color: AppColors.sidebarText,
-                          ),
-                        ),
-                        Text(
-                          installerMode ? 'Installer' : 'Homeowner',
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: AppColors.primary,
+                        child: Text(
+                          _initials(name, email),
                           style: AppTextStyles.caption.copyWith(
-                            color: AppColors.sidebarTextMuted,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.label.copyWith(
+                                color: AppColors.sidebarText,
+                              ),
+                            ),
+                            Text(
+                              roleLabel,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.sidebarTextMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Sign out',
+                        onPressed: appState.signOut,
+                        icon: const Icon(Icons.logout_rounded, size: 18),
+                        color: AppColors.sidebarTextMuted,
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: 'Sign out',
-                    onPressed: appState.signOut,
-                    icon: const Icon(Icons.logout_rounded, size: 18),
-                    color: AppColors.sidebarTextMuted,
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
+  }
+
+  static String _roleLabel(KilowattsRole role) {
+    switch (role) {
+      case KilowattsRole.installer:
+        return 'Installer';
+      case KilowattsRole.homeowner:
+        return 'Homeowner';
+      case KilowattsRole.unassigned:
+        return 'Unassigned';
+    }
   }
 
   static String _initials(String? name, String? email) {
@@ -510,7 +535,7 @@ class _SidebarDestination extends StatelessWidget {
                   ),
                 ),
                 if (destination.showUnreadBadge)
-                  ValueListenableBuilder(
+                  ValueListenableBuilder<List<AlertModel>>(
                     valueListenable: AppStateScope.of(context).alerts,
                     builder: (context, alerts, _) {
                       final unread = alerts
