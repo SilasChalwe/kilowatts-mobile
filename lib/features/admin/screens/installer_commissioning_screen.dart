@@ -191,18 +191,19 @@ class InstallerCommissioningScreen extends StatelessWidget {
   }
 }
 
-enum _UserAction { updateDetails, mqtt, revoke }
+enum _UserAction { assignRole, mqtt, revoke }
 
 class _UserListTile extends StatelessWidget {
   const _UserListTile({
     required this.user,
-    required this.onUpdateDetails,
+    required this.onAssignRole,
     required this.onMqtt,
     required this.onRevoke,
+    super.key,
   });
 
   final KilowattsUserAccess user;
-  final VoidCallback onUpdateDetails;
+  final VoidCallback onAssignRole;
   final VoidCallback onMqtt;
   final VoidCallback onRevoke;
 
@@ -248,8 +249,8 @@ class _UserListTile extends StatelessWidget {
           PopupMenuButton<_UserAction>(
             onSelected: (action) {
               switch (action) {
-                case _UserAction.updateDetails:
-                  onUpdateDetails();
+                case _UserAction.assignRole:
+                  onAssignRole();
                 case _UserAction.mqtt:
                   onMqtt();
                 case _UserAction.revoke:
@@ -258,8 +259,8 @@ class _UserListTile extends StatelessWidget {
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
-                value: _UserAction.updateDetails,
-                child: Text('Update user details'),
+                value: _UserAction.assignRole,
+                child: Text('Assign role'),
               ),
               PopupMenuItem(
                 value: _UserAction.mqtt,
@@ -275,6 +276,61 @@ class _UserListTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RoleDialog extends StatefulWidget {
+  const _RoleDialog({required this.initialRole});
+
+  final KilowattsRole initialRole;
+
+  @override
+  State<_RoleDialog> createState() => _RoleDialogState();
+}
+
+class _RoleDialogState extends State<_RoleDialog> {
+  late KilowattsRole _role;
+
+  @override
+  void initState() {
+    super.initState();
+    _role = widget.initialRole;
+  }
+
+  static String _roleLabel(KilowattsRole role) => switch (role) {
+    KilowattsRole.homeowner => 'Homeowner',
+    KilowattsRole.installer => 'Installer',
+    KilowattsRole.unassigned => 'Unassigned',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Assign role'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final role in KilowattsRole.values)
+            RadioListTile<KilowattsRole>(
+              contentPadding: EdgeInsets.zero,
+              title: Text(_roleLabel(role)),
+              value: role,
+              groupValue: _role,
+              onChanged: (value) => setState(() => _role = value!),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_role),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
