@@ -25,37 +25,38 @@ class _MockAccessControlService extends Mock implements AccessControlService {}
 /// a descendant widget can read the one [AppState] instance installed at
 /// the root, at any depth, without any constructor plumbing.
 void main() {
-  testWidgets('a deeply nested descendant reads the AppState installed at the root', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final auth = _MockFirebaseAuth();
-    when(() => auth.userChanges()).thenAnswer((_) => const Stream.empty());
-    when(() => auth.currentUser).thenReturn(null);
+  testWidgets(
+    'a deeply nested descendant reads the AppState installed at the root',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final auth = _MockFirebaseAuth();
+      when(() => auth.userChanges()).thenAnswer((_) => const Stream.empty());
+      when(() => auth.currentUser).thenReturn(null);
 
-    final appState = AppState(
-      authService: AuthService(firebaseAuth: auth),
-      mqttService: MqttService(),
-      localStateService: LocalStateService(),
-      accessControlService: _MockAccessControlService(),
-    );
-    addTearDown(appState.dispose);
+      final appState = AppState(
+        authService: AuthService(firebaseAuth: auth),
+        mqttService: MqttService(),
+        localStateService: LocalStateService(),
+        accessControlService: _MockAccessControlService(),
+      );
+      addTearDown(appState.dispose);
 
-    AppState? observed;
+      AppState? observed;
 
-    await tester.pumpWidget(
-      AppStateScope(
-        appState: appState,
-        child: const MaterialApp(
-          home: _NestedReader(),
+      await tester.pumpWidget(
+        AppStateScope(
+          appState: appState,
+          child: const MaterialApp(home: _NestedReader()),
         ),
-      ),
-    );
+      );
 
-    final finder = find.byType(_NestedReader);
-    final state = tester.state<_NestedReaderState>(finder);
-    observed = state.appState;
+      final finder = find.byType(_NestedReader);
+      final state = tester.state<_NestedReaderState>(finder);
+      observed = state.appState;
 
-    expect(observed, same(appState));
-  });
+      expect(observed, same(appState));
+    },
+  );
 }
 
 class _NestedReader extends StatefulWidget {
@@ -70,6 +71,8 @@ class _NestedReaderState extends State<_NestedReader> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: Center(child: Text(appState.connectionStatus.value.name)));
+    return Scaffold(
+      body: Center(child: Text(appState.connectionStatus.value.name)),
+    );
   }
 }

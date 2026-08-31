@@ -11,7 +11,6 @@ import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../auth/data/access_control_service.dart';
 import '../models/load_model.dart';
 import '../widgets/load_configuration_dialog.dart';
 import '../widgets/load_state_control.dart';
@@ -29,19 +28,12 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
   bool _isSaving = false;
   String? _saveMessage;
   bool _saveFailed = false;
-  Future<InstallationAccess>? _access;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _access ??= AppStateScope.of(context).resolveCurrentAccess();
-  }
-
   Future<void> _removeLoad(LoadModel load) async {
     final confirmed = await ConfirmationDialog.show(
       context,
       title: 'Remove ${load.name}?',
-      message: 'This unregisters the load from ${load.owningNodeName ?? load.owningNodeMac}.',
+      message:
+          'This unregisters the load from ${load.owningNodeName ?? load.owningNodeMac}.',
       confirmLabel: 'Remove',
       isDestructive: true,
     );
@@ -53,10 +45,9 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
       _saveMessage = 'Removing load from Central…';
     });
 
-    final outcome = await AppStateScope.of(context).removeLoad(
-      nodeMac: load.owningNodeMac,
-      relayPin: load.relayPin,
-    );
+    final outcome = await AppStateScope.of(
+      context,
+    ).removeLoad(nodeMac: load.owningNodeMac, relayPin: load.relayPin);
 
     if (!mounted) return;
     if (outcome.isConfirmed) {
@@ -84,7 +75,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
       nodeMac: load.owningNodeMac,
       relayPin: load.relayPin,
       mode: draft.mode,
-      currentRequestedState: load.requestedState ?? load.confirmedState ?? false,
+      currentRequestedState: load.requestedState ?? false,
       priority: draft.priority,
       schedule: draft.mode == LoadMode.fixed
           ? LoadSchedule.disabled
@@ -108,7 +99,9 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     return ValueListenableBuilder<List<LoadModel>>(
       valueListenable: appState.loads,
       builder: (context, loads, _) {
-        final matches = loads.where((candidate) => candidate.id == widget.load.id);
+        final matches = loads.where(
+          (candidate) => candidate.id == widget.load.id,
+        );
         final load = matches.isEmpty ? widget.load : matches.first;
         final priorityLevel = LoadPriorityLevel.bucketFor(load.priority);
 
@@ -133,13 +126,13 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                             label: !load.available
                                 ? 'Unavailable'
                                 : load.displayState == true
-                                    ? 'On'
-                                    : 'Off',
+                                ? 'On'
+                                : 'Off',
                             tone: !load.available
                                 ? StatusTone.negative
                                 : load.displayState == true
-                                    ? StatusTone.positive
-                                    : StatusTone.neutral,
+                                ? StatusTone.positive
+                                : StatusTone.neutral,
                           ),
                         ],
                       ),
@@ -174,48 +167,39 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                                       : 'Not scheduled',
                                 ),
                                 const SizedBox(height: AppSpacing.sm),
-                                FutureBuilder<InstallationAccess>(
-                                  future: _access,
-                                  builder: (context, snapshot) {
-                                    final canManageHardware =
-                                        snapshot.data?.canManageHardware ??
-                                        false;
-                                    return Wrap(
-                                      alignment: WrapAlignment.end,
-                                      spacing: AppSpacing.sm,
-                                      runSpacing: AppSpacing.xs,
-                                      children: [
-                                        if (canManageHardware)
-                                          TextButton.icon(
-                                            onPressed: _isSaving
-                                                ? null
-                                                : () => _removeLoad(load),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: AppColors.error,
-                                            ),
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              size: 18,
-                                            ),
-                                            label: const Text('Remove load'),
-                                          ),
-                                        OutlinedButton.icon(
-                                          onPressed: _isSaving
-                                              ? null
-                                              : () => _editConfiguration(load),
-                                          icon: const Icon(
-                                            Icons.edit_outlined,
-                                            size: 18,
-                                          ),
-                                          label: Text(
-                                            _isSaving
-                                                ? 'Applying…'
-                                                : 'Edit configuration',
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.xs,
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: _isSaving
+                                          ? null
+                                          : () => _removeLoad(load),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: AppColors.error,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Remove load'),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: _isSaving
+                                          ? null
+                                          : () => _editConfiguration(load),
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        _isSaving
+                                            ? 'Applying…'
+                                            : 'Edit configuration',
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -295,13 +279,13 @@ class _SaveFeedback extends StatelessWidget {
     final color = failed
         ? AppColors.error
         : pending
-            ? AppColors.info
-            : AppColors.success;
+        ? AppColors.info
+        : AppColors.success;
     final background = failed
         ? AppColors.errorSoft
         : pending
-            ? AppColors.infoSoft
-            : AppColors.successSoft;
+        ? AppColors.infoSoft
+        : AppColors.successSoft;
 
     return Container(
       width: double.infinity,
@@ -317,8 +301,8 @@ class _SaveFeedback extends StatelessWidget {
             failed
                 ? Icons.error_outline_rounded
                 : pending
-                    ? Icons.sync_rounded
-                    : Icons.check_circle_outline_rounded,
+                ? Icons.sync_rounded
+                : Icons.check_circle_outline_rounded,
             size: 18,
             color: color,
           ),

@@ -141,7 +141,11 @@ class TrendChartCard extends StatelessWidget {
 
   String _formatValue(double value) {
     final abs = value.abs();
-    final decimals = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+    final decimals = abs >= 100
+        ? 0
+        : abs >= 10
+        ? 1
+        : 2;
     final text = value.toStringAsFixed(decimals);
     return unit.isEmpty ? text : '$text $unit';
   }

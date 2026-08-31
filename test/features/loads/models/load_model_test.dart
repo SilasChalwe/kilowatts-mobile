@@ -40,8 +40,6 @@ void main() {
       expect(load.mode, LoadMode.auto);
       expect(load.priority, 7);
       expect(load.requestedState, true);
-      expect(load.confirmedState, isNull);
-      expect(load.confirmedStateValid, isFalse);
       expect(load.schedule.enabled, true);
       expect(load.schedule.startHour, 22);
       expect(load.schedule.startMinute, 30);
@@ -51,7 +49,7 @@ void main() {
       expect(load.id, 'AA:BB:CC:DD:EE:FF:26');
     });
 
-    test('derives OFF state from current firmware mode when targetOn is absent', () {
+    test('derives OFF state from the current firmware mode', () {
       final load = LoadModel.fromJson(_wireLoad(mode: 'FIXED_OFF'));
       expect(load.mode, LoadMode.fixed);
       expect(load.requestedState, false);
@@ -84,29 +82,6 @@ void main() {
       final load = LoadModel.fromJson(const {});
       expect(load.owningNodeMac, '');
       expect(load.relayPin, -1);
-      expect(load.confirmedStateValid, isFalse);
-    });
-
-    test('legacy payload remains readable during migration', () {
-      final load = LoadModel.fromJson({
-        'nodeMac': 'AA:BB:CC:DD:EE:FF',
-        'relayPin': 16,
-        'mode': 'AUTO_OFF',
-        'targetOn': true,
-        'scheduleEnabled': true,
-        'scheduleHour': 6,
-        'scheduleMinute': 30,
-        'nominalPowerWatts': 8.0,
-        'rejectionReason': 'LOW_BATTERY',
-      });
-      expect(load.requestedState, true);
-      expect(load.schedule.startHour, 6);
-      expect(load.schedule.startMinute, 30);
-      expect(load.ratedPowerW, 8.0);
-      expect(
-        load.rejectionReason,
-        LoadRejectionReason.batteryReserveProtected,
-      );
     });
   });
 
@@ -130,17 +105,6 @@ void main() {
 
     test('disabled schedule only needs enabled=false', () {
       expect(LoadSchedule.disabled.toWireJson(), {'enabled': false});
-    });
-
-    test('legacy single time becomes a valid one-hour window', () {
-      const schedule = LoadSchedule(enabled: true, hour: 23, minute: 30);
-      expect(schedule.toWireJson(), {
-        'enabled': true,
-        'startHour': 23,
-        'startMinute': 30,
-        'endHour': 0,
-        'endMinute': 30,
-      });
     });
   });
 

@@ -33,7 +33,9 @@ class LoadCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        mouseCursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        mouseCursor: onTap == null
+            ? MouseCursor.defer
+            : SystemMouseCursors.click,
         hoverColor: AppColors.primary.withValues(alpha: 0.03),
         focusColor: AppColors.primarySoft,
         child: Padding(
@@ -54,7 +56,9 @@ class LoadCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                     child: Icon(
-                      isOn ? Icons.flash_on_rounded : Icons.power_settings_new_rounded,
+                      isOn
+                          ? Icons.flash_on_rounded
+                          : Icons.power_settings_new_rounded,
                       color: isOn ? AppColors.success : AppColors.textSecondary,
                     ),
                   ),
@@ -84,13 +88,13 @@ class LoadCard extends StatelessWidget {
                     label: !load.available
                         ? 'Unavailable'
                         : isOn
-                            ? 'On'
-                            : 'Off',
+                        ? 'On'
+                        : 'Off',
                     tone: !load.available
                         ? StatusTone.negative
                         : isOn
-                            ? StatusTone.positive
-                            : StatusTone.neutral,
+                        ? StatusTone.positive
+                        : StatusTone.neutral,
                   ),
                 ],
               ),

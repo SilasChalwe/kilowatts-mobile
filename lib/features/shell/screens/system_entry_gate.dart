@@ -4,7 +4,7 @@ import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
-import '../../admin/screens/installer_role_shell.dart';
+import '../../admin/screens/installer_commissioning_screen.dart';
 import '../../auth/data/access_control_service.dart';
 import 'main_shell.dart';
 
@@ -49,10 +49,10 @@ class _SystemEntryGateState extends State<SystemEntryGate> {
 
         final access = snapshot.data!;
         if (access.role == KilowattsRole.installer) {
-          return const InstallerRoleShell();
+          return const InstallerCommissioningScreen();
         }
 
-        if (access.role == KilowattsRole.homeowner) {
+        if (access.role == KilowattsRole.homeowner && access.hasInstallation) {
           return const MainShell();
         }
 

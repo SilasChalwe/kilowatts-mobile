@@ -77,30 +77,44 @@ void main() {
       expect(topology.central?.role, NodeRole.central);
     });
 
-    test('preserves communication hierarchy (parentMac/hopCount) across hops', () {
-      final topology = TopologyModel.fromJson(_tree());
-      final grandchild = topology.nodeByMac(_grandchildMac);
+    test(
+      'preserves communication hierarchy (parentMac/hopCount) across hops',
+      () {
+        final topology = TopologyModel.fromJson(_tree());
+        final grandchild = topology.nodeByMac(_grandchildMac);
 
-      expect(grandchild, isNotNull);
-      expect(grandchild!.nextHopMac, _smartMac);
-      expect(grandchild.hopCount, 2);
-      expect(grandchild.online, isFalse);
-      expect(topology.childrenOf(_centralMac).map((n) => n.mac), [_smartMac]);
-      expect(topology.childrenOf(_smartMac).map((n) => n.mac), [_grandchildMac]);
-    });
+        expect(grandchild, isNotNull);
+        expect(grandchild!.nextHopMac, _smartMac);
+        expect(grandchild.hopCount, 2);
+        expect(grandchild.online, isFalse);
+        expect(topology.childrenOf(_centralMac).map((n) => n.mac), [_smartMac]);
+        expect(topology.childrenOf(_smartMac).map((n) => n.mac), [
+          _grandchildMac,
+        ]);
+      },
+    );
 
-    test('each node carries its own loads, parsed from that node\'s "loads" array', () {
-      final topology = TopologyModel.fromJson(_tree());
+    test(
+      'each node carries its own loads, parsed from that node\'s "loads" array',
+      () {
+        final topology = TopologyModel.fromJson(_tree());
 
-      expect(topology.nodeByMac(_smartMac)!.loads.single.relayPin, 4);
-      expect(topology.nodeByMac(_grandchildMac)!.loads.single.relayPin, 12);
-      expect(topology.central!.loads.single.relayPin, 25);
-    });
+        expect(topology.nodeByMac(_smartMac)!.loads.single.relayPin, 4);
+        expect(topology.nodeByMac(_grandchildMac)!.loads.single.relayPin, 12);
+        expect(topology.central!.loads.single.relayPin, 25);
+      },
+    );
 
-    test('a null central (no Central registered yet) yields TopologyModel.empty', () {
-      final topology = TopologyModel.fromJson({'schemaVersion': 3, 'central': null});
-      expect(topology.nodes, isEmpty);
-      expect(topology.central, isNull);
-    });
+    test(
+      'a null central (no Central registered yet) yields TopologyModel.empty',
+      () {
+        final topology = TopologyModel.fromJson({
+          'schemaVersion': 3,
+          'central': null,
+        });
+        expect(topology.nodes, isEmpty);
+        expect(topology.central, isNull);
+      },
+    );
   });
 }

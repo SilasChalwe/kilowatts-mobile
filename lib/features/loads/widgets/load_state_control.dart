@@ -80,14 +80,6 @@ class _LoadStateControlState extends State<LoadStateControl> {
                         isOn ? 'Requested ON' : 'Requested OFF',
                         style: AppTextStyles.label,
                       ),
-                      if (load.confirmedStateValid &&
-                          load.confirmedState != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Relay feedback: ${load.confirmedState! ? 'ON' : 'OFF'}',
-                          style: AppTextStyles.caption,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -100,7 +92,9 @@ class _LoadStateControlState extends State<LoadStateControl> {
                 ? 'Waiting for Central…'
                 : (isOn ? 'Turn Off' : 'Turn On'),
             isLoading: _isSending,
-            onPressed: load.available && !_isSending ? () => _setState(!isOn) : null,
+            onPressed: load.available && !_isSending
+                ? () => _setState(!isOn)
+                : null,
           ),
           if (_message != null) ...[
             const SizedBox(height: AppSpacing.xs),
@@ -169,13 +163,13 @@ class _CommandMessage extends StatelessWidget {
     final color = isError
         ? AppColors.error
         : isPending
-            ? AppColors.info
-            : AppColors.success;
+        ? AppColors.info
+        : AppColors.success;
     final icon = isError
         ? Icons.error_outline_rounded
         : isPending
-            ? Icons.sync_rounded
-            : Icons.check_circle_outline_rounded;
+        ? Icons.sync_rounded
+        : Icons.check_circle_outline_rounded;
 
     return Container(
       width: double.infinity,

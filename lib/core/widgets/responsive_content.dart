@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_spacing.dart';
 
-/// Keeps web pages dense and readable instead of stretching content across an
-/// entire browser window. Mobile remains edge-to-edge with device-appropriate
-/// padding.
+/// Keeps tablet pages readable while phones use device-appropriate padding.
 class ResponsiveContent extends StatelessWidget {
   const ResponsiveContent({
     required this.child,
@@ -25,15 +23,22 @@ class ResponsiveContent extends StatelessWidget {
     final horizontal = width >= AppBreakpoints.desktop
         ? AppSpacing.pageDesktop
         : width >= 600
-            ? AppSpacing.pageTablet
-            : AppSpacing.pageMobile;
+        ? AppSpacing.pageTablet
+        : AppSpacing.pageMobile;
 
     return Align(
       alignment: alignment,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: Padding(
-          padding: padding ?? EdgeInsets.fromLTRB(horizontal, AppSpacing.lg, horizontal, AppSpacing.xl),
+          padding:
+              padding ??
+              EdgeInsets.fromLTRB(
+                horizontal,
+                AppSpacing.lg,
+                horizontal,
+                AppSpacing.xl,
+              ),
           child: child,
         ),
       ),
@@ -64,7 +69,8 @@ class ResponsiveCardGrid extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        var columns = ((constraints.maxWidth + gap) / (minCardWidth + gap)).floor();
+        var columns = ((constraints.maxWidth + gap) / (minCardWidth + gap))
+            .floor();
         if (columns < 1) columns = 1;
         if (columns > maxColumns) columns = maxColumns;
 

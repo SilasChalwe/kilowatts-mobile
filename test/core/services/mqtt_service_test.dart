@@ -10,11 +10,6 @@ void main() {
 
       expect(topics.commandsLoad, 'kilowatts/v1/home-42/commands/load');
       expect(topics.commandsConfig, 'kilowatts/v1/home-42/commands/config');
-      expect(topics.commandsSystem, 'kilowatts/v1/home-42/commands/system');
-      expect(
-        topics.commandsSimulation,
-        'kilowatts/v1/home-42/commands/simulation',
-      );
       expect(topics.commandsReserve, 'kilowatts/v1/home-42/commands/reserve');
       expect(topics.acks, 'kilowatts/v1/home-42/acks');
     });
@@ -24,8 +19,6 @@ void main() {
 
       expect(topics.subscriptions, isNot(contains(topics.commandsLoad)));
       expect(topics.subscriptions, isNot(contains(topics.commandsConfig)));
-      expect(topics.subscriptions, isNot(contains(topics.commandsSystem)));
-      expect(topics.subscriptions, isNot(contains(topics.commandsSimulation)));
       expect(topics.subscriptions, isNot(contains(topics.commandsReserve)));
     });
   });
@@ -36,11 +29,14 @@ void main() {
     setUp(() => service = MqttService());
     tearDown(() => service.dispose());
 
-    test('setBatteryReserve fails without fabricating a confirmation', () async {
-      final outcome = await service.setBatteryReserve(25);
-      expect(outcome.status, CommandStatus.failed);
-      expect(outcome.message, 'Not connected to the system');
-    });
+    test(
+      'setBatteryReserve fails without fabricating a confirmation',
+      () async {
+        final outcome = await service.setBatteryReserve(25);
+        expect(outcome.status, CommandStatus.failed);
+        expect(outcome.message, 'Not connected to the system');
+      },
+    );
 
     test('removeLoad fails without fabricating a confirmation', () async {
       final outcome = await service.removeLoad(

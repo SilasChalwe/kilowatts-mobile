@@ -74,7 +74,9 @@ class _BatteryReserveCardState extends State<BatteryReserveCard> {
     final state = widget.state;
     final configured = state.reserveConfigured == true;
     final livePercent = state.reserveSoCPercent;
-    final sliderValue = (_draftPercent ?? livePercent ?? 20).clamp(0, 100).toDouble();
+    final sliderValue = (_draftPercent ?? livePercent ?? 20)
+        .clamp(0, 100)
+        .toDouble();
     final ratedKwh = state.batteryRatedEnergyWattHours == null
         ? null
         : state.batteryRatedEnergyWattHours! / 1000;
@@ -93,10 +95,14 @@ class _BatteryReserveCardState extends State<BatteryReserveCard> {
           if (state.batteryCapacityAmpHours != null) ...[
             SectionRow(
               label: 'Battery capacity',
-              value: '${state.batteryCapacityAmpHours!.toStringAsFixed(state.batteryCapacityAmpHours! % 1 == 0 ? 0 : 1)} Ah',
+              value:
+                  '${state.batteryCapacityAmpHours!.toStringAsFixed(state.batteryCapacityAmpHours! % 1 == 0 ? 0 : 1)} Ah',
             ),
             if (ratedKwh != null)
-              SectionRow(label: 'Total energy', value: Formatters.energy(ratedKwh)),
+              SectionRow(
+                label: 'Total energy',
+                value: Formatters.energy(ratedKwh),
+              ),
             const SizedBox(height: AppSpacing.sm),
           ],
           if (!configured)
@@ -121,7 +127,10 @@ class _BatteryReserveCardState extends State<BatteryReserveCard> {
               onChangeEnd: _isSending ? null : _apply,
             ),
             const Divider(),
-            SectionRow(label: 'Stored energy', value: Formatters.energy(storedKwh)),
+            SectionRow(
+              label: 'Stored energy',
+              value: Formatters.energy(storedKwh),
+            ),
             SectionRow(
               label: 'Usable above reserve',
               value: Formatters.energy(usableKwh),

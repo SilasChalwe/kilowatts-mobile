@@ -35,7 +35,9 @@ class NodeLoadRow extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                isOn ? Icons.flash_on_rounded : Icons.power_settings_new_rounded,
+                isOn
+                    ? Icons.flash_on_rounded
+                    : Icons.power_settings_new_rounded,
                 size: 16,
                 color: color,
               ),
@@ -48,7 +50,10 @@ class NodeLoadRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(Formatters.power(load.ratedPowerW), style: AppTextStyles.caption),
+              Text(
+                Formatters.power(load.ratedPowerW),
+                style: AppTextStyles.caption,
+              ),
               if (onTap != null) ...[
                 const SizedBox(width: 2),
                 const Icon(

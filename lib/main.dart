@@ -21,7 +21,6 @@ Future<void> main() async {
 
     final localStateService = LocalStateService();
     final authService = AuthService();
-    await authService.initializePersistence();
 
     final appState = AppState(
       authService: authService,

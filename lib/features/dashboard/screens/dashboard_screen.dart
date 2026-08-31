@@ -11,11 +11,7 @@ import '../../../core/widgets/responsive_content.dart';
 import '../../system/models/system_state_model.dart';
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, this.onViewAllAlerts});
-
-  // Retained for compatibility with older shell call sites. Alerts have their
-  // own primary destination and are intentionally not duplicated on Overview.
-  final VoidCallback? onViewAllAlerts;
+  const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

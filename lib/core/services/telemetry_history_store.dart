@@ -56,18 +56,20 @@ class TelemetryHistoryStore {
 
   final FirebaseFirestore _firestore;
 
-  DocumentReference<Map<String, dynamic>> _document(String uid) => _firestore
-      .collection('telemetry')
-      .doc(uid)
-      .collection('history')
-      .doc('graphs');
+  DocumentReference<Map<String, dynamic>> _document(String installationId) =>
+      _firestore
+          .collection('telemetry')
+          .doc(installationId)
+          .collection('history')
+          .doc('graphs');
 
-  Future<TelemetryHistorySnapshot> read(String uid) async {
-    final snapshot = await _document(uid).get();
+  Future<TelemetryHistorySnapshot> read(String installationId) async {
+    final snapshot = await _document(installationId).get();
     return TelemetryHistorySnapshot.fromData(snapshot.data());
   }
 
-  Future<void> write(String uid, TelemetryHistorySnapshot history) => _document(
-    uid,
-  ).set({...history.toData(), 'updatedAt': FieldValue.serverTimestamp()});
+  Future<void> write(String installationId, TelemetryHistorySnapshot history) =>
+      _document(
+        installationId,
+      ).set({...history.toData(), 'updatedAt': FieldValue.serverTimestamp()});
 }

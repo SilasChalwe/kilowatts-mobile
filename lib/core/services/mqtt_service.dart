@@ -4,11 +4,11 @@ import 'dart:math';
 
 import 'package:mqtt_client/mqtt_client.dart';
 
-import '../../features/admin/models/installer_node_model.dart';
 import '../../features/alerts/models/alert_model.dart';
+import '../../features/loads/models/load_configuration.dart';
 import '../../features/loads/models/load_model.dart';
-import '../../features/setup/models/setup_session.dart';
 import '../../features/system/models/system_state_model.dart';
+import '../../features/system/models/system_node_model.dart';
 import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
 import 'command_outcome.dart';
@@ -36,7 +36,7 @@ class _PendingCommand {
   final Completer<CommandOutcome> completer = Completer<CommandOutcome>();
 }
 
-/// Single MQTT boundary shared by homeowner and installer experiences.
+/// Homeowner MQTT boundary for one assigned installation.
 class MqttService {
   MqttService({MqttConfig? config, this.cache})
     : _config = config ?? const MqttConfig.unconfigured();
@@ -61,8 +61,8 @@ class MqttService {
   final _topologyController = StreamController<TopologyModel>.broadcast();
   final _loadsController = StreamController<List<LoadModel>>.broadcast();
   final _alertController = StreamController<AlertModel>.broadcast();
-  final _installerNodesController =
-      StreamController<List<InstallerNodeModel>>.broadcast();
+  final _systemNodesController =
+      StreamController<List<SystemNodeModel>>.broadcast();
 
   final Map<String, _PendingCommand> _pendingCommands = {};
 
@@ -79,8 +79,8 @@ class MqttService {
   Stream<TopologyModel> get topologyStream => _topologyController.stream;
   Stream<List<LoadModel>> get loadsStream => _loadsController.stream;
   Stream<AlertModel> get alertStream => _alertController.stream;
-  Stream<List<InstallerNodeModel>> get installerNodesStream =>
-      _installerNodesController.stream;
+  Stream<List<SystemNodeModel>> get systemNodesStream =>
+      _systemNodesController.stream;
 
   bool get isConfigured => _config.isConfigured;
 
@@ -338,10 +338,10 @@ class MqttService {
           (payload['nodes'] as List?)
               ?.whereType<Map>()
               .map((e) => e.cast<String, dynamic>())
-              .map(InstallerNodeModel.fromJson)
+              .map(SystemNodeModel.fromJson)
               .toList(growable: false) ??
-          const <InstallerNodeModel>[];
-      _installerNodesController.add(nodes);
+          const <SystemNodeModel>[];
+      _systemNodesController.add(nodes);
       return;
     }
     if (topic == _topics.events) {
@@ -421,73 +421,7 @@ class MqttService {
     return on ? 'AUTO_ON' : 'AUTO_OFF';
   }
 
-  /// Configures the power policy through CONFIGURE_POWER_LIMITS, which is
-  /// the command implemented by the current Central firmware.
-  Future<CommandOutcome> sendSafetyConfig({
-    required String centralNodeMac,
-    required SafetyConfigDraft draft,
-  }) {
-    return _sendConfigCommand({
-      'action': 'CONFIGURE_POWER_LIMITS',
-      'nodeMac': centralNodeMac,
-      'powerLimits': {
-        'minimumStateOfChargePercent': draft.lowBatteryCutoffPercent,
-        'maximumBatteryDischargeCurrentAmps': draft.maxBatteryDischargeCurrentA,
-        'maximumMainCurrentAmps': draft.mainCurrentLimitA,
-        'requiredRuntimeHours': draft.targetRuntimeHours,
-      },
-    });
-  }
-
-  Future<CommandOutcome> requestOptimizationCycle() {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSystem, commandId, {
-      'commandId': commandId,
-      'action': 'REQUEST_OPTIMIZATION_CYCLE',
-    });
-  }
-
-  Future<CommandOutcome> setOptimizerIntervalSeconds(int seconds) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSystem, commandId, {
-      'commandId': commandId,
-      'action': 'SET_OPTIMIZER_INTERVAL',
-      'optimizerIntervalSeconds': seconds,
-    });
-  }
-
-  Future<CommandOutcome> commissionNode({
-    required String nodeMac,
-    required String friendlyName,
-  }) {
-    return _sendConfigCommand({
-      'action': 'COMMISSION_NODE',
-      'nodeMac': nodeMac,
-      'friendlyName': friendlyName,
-    });
-  }
-
-  Future<CommandOutcome> renameNode({
-    required String nodeMac,
-    required String friendlyName,
-  }) {
-    return _sendConfigCommand({
-      'action': 'RENAME_NODE',
-      'nodeMac': nodeMac,
-      'friendlyName': friendlyName,
-    });
-  }
-
-  Future<CommandOutcome> decommissionNode({required String nodeMac}) {
-    return _sendConfigCommand({
-      'action': 'DECOMMISSION_NODE',
-      'nodeMac': nodeMac,
-    });
-  }
-
-  Future<CommandOutcome> configureLoad(
-    InstallerLoadConfiguration configuration,
-  ) {
+  Future<CommandOutcome> configureLoad(LoadConfiguration configuration) {
     return _sendConfigCommand({
       'action': 'CONFIGURE_LOAD',
       ...configuration.toCommandPayload(),
@@ -505,56 +439,6 @@ class MqttService {
       'action': 'REMOVE_LOAD',
       'nodeMac': nodeMac,
       'relayPin': relayPin,
-    });
-  }
-
-  Future<CommandOutcome> configureBatterySensor({
-    required String centralNodeMac,
-    required int i2cAddress,
-    required double shuntResistanceOhms,
-    required double nominalVoltageVolts,
-    required double maximumExpectedCurrentAmps,
-    required double emaAlpha,
-    required double batteryCapacityAmpHours,
-    required double initialStateOfChargePercent,
-  }) {
-    return _sendConfigCommand({
-      'action': 'CONFIGURE_BATTERY_SENSOR',
-      'nodeMac': centralNodeMac,
-      'batterySensor': {
-        'i2cAddress': i2cAddress,
-        'shuntResistanceOhms': shuntResistanceOhms,
-        'nominalVoltageVolts': nominalVoltageVolts,
-        'maximumExpectedCurrentAmps': maximumExpectedCurrentAmps,
-        'emaAlpha': emaAlpha,
-        'batteryCapacityAmpHours': batteryCapacityAmpHours,
-        'initialStateOfChargePercent': initialStateOfChargePercent,
-      },
-    });
-  }
-
-  Future<CommandOutcome> setSimulationEnabled(bool enabled) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSimulation, commandId, {
-      'commandId': commandId,
-      'action': enabled ? 'ENABLE' : 'DISABLE',
-    });
-  }
-
-  Future<CommandOutcome> setSimulationValues({
-    double? batteryVoltageVolts,
-    double? batteryCurrentAmps,
-    double? stateOfChargePercent,
-  }) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSimulation, commandId, {
-      'commandId': commandId,
-      'action': 'SET_VALUES',
-      'values': {
-        'batteryVoltageVolts': ?batteryVoltageVolts,
-        'batteryCurrentAmps': ?batteryCurrentAmps,
-        'stateOfChargePercent': ?stateOfChargePercent,
-      },
     });
   }
 
@@ -664,6 +548,6 @@ class MqttService {
     _topologyController.close();
     _loadsController.close();
     _alertController.close();
-    _installerNodesController.close();
+    _systemNodesController.close();
   }
 }

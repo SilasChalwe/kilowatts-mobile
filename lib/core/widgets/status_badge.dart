@@ -11,7 +11,6 @@ class StatusBadge extends StatelessWidget {
     required this.label,
     super.key,
     this.tone = StatusTone.neutral,
-    this.showDot = true,
   });
 
   factory StatusBadge.online({bool online = true}) => StatusBadge(
@@ -21,10 +20,6 @@ class StatusBadge extends StatelessWidget {
 
   final String label;
   final StatusTone tone;
-
-  /// Kept for source compatibility. When enabled the badge now shows a
-  /// tone-specific icon instead of a colour-only dot.
-  final bool showDot;
 
   Color get _color {
     switch (tone) {
@@ -76,10 +71,8 @@ class StatusBadge extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (showDot) ...[
-                Icon(_icon, size: 13, color: color),
-                const SizedBox(width: AppSpacing.xxs),
-              ],
+              Icon(_icon, size: 13, color: color),
+              const SizedBox(width: AppSpacing.xxs),
               Flexible(
                 child: Text(
                   label,

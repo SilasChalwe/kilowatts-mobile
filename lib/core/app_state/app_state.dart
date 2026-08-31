@@ -4,13 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../features/admin/models/installer_node_model.dart';
 import '../../features/alerts/models/alert_model.dart';
 import '../../features/auth/data/access_control_service.dart';
 import '../../features/auth/data/auth_service.dart';
 import '../../features/loads/models/load_model.dart';
-import '../../features/setup/models/setup_session.dart';
+import '../../features/loads/models/load_configuration.dart';
 import '../../features/system/models/system_state_model.dart';
+import '../../features/system/models/system_node_model.dart';
 import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
 import '../models/telemetry_point.dart';
@@ -31,7 +31,8 @@ const _maxStoredAlerts = 100;
 const _historyRetention = Duration(days: 7);
 const _maxHistoryPoints = 2048;
 
-/// Shared application state for both homeowner and installer experiences.
+/// Shared application state. Homeowners connect to their assigned installation;
+/// installers use the separate provisioning service and never enter this scope.
 class AppState {
   AppState({
     required this.authService,
@@ -65,8 +66,7 @@ class AppState {
   final ValueNotifier<MqttConnectionStatus> connectionStatus = ValueNotifier(
     MqttConnectionStatus.disconnected,
   );
-  String? _selectedUserUid;
-  String? _activeUserUid;
+  String? _activeInstallationId;
   String? _loadedCacheScope;
   int _userScopeGeneration = 0;
   int _connectRequestId = 0;
@@ -79,7 +79,7 @@ class AppState {
   final ValueNotifier<TopologyModel?> topology = ValueNotifier(null);
   final ValueNotifier<List<LoadModel>> loads = ValueNotifier(const []);
   final ValueNotifier<List<AlertModel>> alerts = ValueNotifier(const []);
-  final ValueNotifier<List<InstallerNodeModel>> installerNodes = ValueNotifier(
+  final ValueNotifier<List<SystemNodeModel>> systemNodes = ValueNotifier(
     const [],
   );
 
@@ -119,12 +119,6 @@ class AppState {
 
   Future<InstallationAccess> resolveCurrentAccess() =>
       _accessControlService.resolve(currentUser);
-
-  Future<void> setSetupComplete(bool complete) =>
-      _localState.setSetupComplete(complete, scope: _activeUserUid);
-
-  Future<void> setNodeNameOverride(String mac, String name) =>
-      _localState.setNodeNameOverride(mac, name, scope: _activeUserUid);
 
   void _wireMqttSubscriptions() {
     connectionStatus.value = _mqtt.currentStatus;
@@ -203,9 +197,9 @@ class AppState {
       }),
     );
     _subscriptions.add(
-      _mqtt.installerNodesStream.listen((nodes) {
+      _mqtt.systemNodesStream.listen((nodes) {
         if (_disposed) return;
-        installerNodes.value = nodes;
+        systemNodes.value = nodes;
       }),
     );
   }
@@ -214,10 +208,10 @@ class AppState {
     final store = mqttPresenceStore;
     final user = currentUser;
     if (store == null || user == null) return;
-    final ownerUid = _activeUserUid;
-    if (ownerUid == null || ownerUid.isEmpty) return;
+    final installationId = _activeInstallationId;
+    if (installationId == null || installationId.isEmpty) return;
     await store.write(
-      ownerUid: ownerUid,
+      installationId: installationId,
       userUid: user.uid,
       status: status.name,
     );
@@ -312,8 +306,7 @@ class AppState {
 
   void _queueTelemetryHistoryWrite() {
     if (_disposed) return;
-    if (_selectedUserUid != null) return;
-    final uid = _activeUserUid;
+    final uid = _activeInstallationId;
     final store = telemetryHistoryStore;
     if (uid == null || uid.isEmpty || store == null) return;
 
@@ -338,7 +331,7 @@ class AppState {
 
   Future<void> _loadCachedSnapshot() async {
     if (_disposed) return;
-    final scope = _activeUserUid;
+    final scope = _activeInstallationId;
     if (scope == null || scope.isEmpty || _loadedCacheScope == scope) return;
     final generation = _userScopeGeneration;
     _loadedCacheScope = scope;
@@ -359,7 +352,7 @@ class AppState {
 
     final store = telemetryHistoryStore;
     var history = TelemetryHistorySnapshot.empty;
-    if (store != null && _selectedUserUid == null) {
+    if (store != null) {
       history = await store.read(scope);
       if (!_isCurrentUserScope(scope, generation)) return;
     }
@@ -377,7 +370,7 @@ class AppState {
 
   Future<void> _persistAlerts() => _localState.cacheAlerts(
     alerts.value.map((a) => a.toJson()).toList(),
-    scope: _activeUserUid,
+    scope: _activeInstallationId,
   );
 
   Future<void> connectMqtt() async {
@@ -403,29 +396,14 @@ class AppState {
   }
 
   MqttConfig get mqttConfig => _mqtt.currentConfig;
-  String? get selectedUserUid => _selectedUserUid;
+  String? get activeInstallationId => _activeInstallationId;
 
-  Future<void> selectUser(String uid) async {
-    final id = uid.trim();
-    if (id.isEmpty || id == _selectedUserUid) return;
-    _selectedUserUid = id;
-    _connectRequestId++;
-    final disconnecting = _mqtt.disconnect();
-    _applyUserScope(id);
-    final generation = _userScopeGeneration;
-    await disconnecting;
-    if (!_isCurrentUserScope(id, generation) || _selectedUserUid != id) {
-      return;
-    }
-    await connectMqtt();
-  }
-
-  void _applyUserScope(String? uid) {
-    final scope = uid?.trim();
+  void _applyInstallationScope(String? installationId) {
+    final scope = installationId?.trim();
     final normalized = scope == null || scope.isEmpty ? null : scope;
-    if (_activeUserUid == normalized) return;
+    if (_activeInstallationId == normalized) return;
 
-    _activeUserUid = normalized;
+    _activeInstallationId = normalized;
     _userScopeGeneration++;
     _loadedCacheScope = null;
     _mqtt.applyCacheScope(normalized);
@@ -438,31 +416,33 @@ class AppState {
     topology.value = null;
     loads.value = const [];
     alerts.value = const [];
-    installerNodes.value = const [];
+    systemNodes.value = const [];
     socHistory.value = const [];
     batteryPowerHistory.value = const [];
     activeLoadPowerHistory.value = const [];
   }
 
   bool _isCurrentUserScope(String uid, int generation) =>
-      !_disposed && _activeUserUid == uid && _userScopeGeneration == generation;
+      !_disposed &&
+      _activeInstallationId == uid &&
+      _userScopeGeneration == generation;
 
   Future<MqttConfig> loadMqttConfig() async {
     final cloudStore = _mqttCloudConfigStore;
     if (cloudStore == null) return _mqtt.loadMqttConfig();
     final access = await _accessControlService.resolve(currentUser);
-    final userUid = access.role == KilowattsRole.installer
-        ? _selectedUserUid
-        : currentUser?.uid;
-    _applyUserScope(userUid);
-    if (userUid == null || userUid.isEmpty) {
+    final installationId = access.role == KilowattsRole.homeowner
+        ? access.installationId
+        : null;
+    _applyInstallationScope(installationId);
+    if (installationId == null || installationId.isEmpty) {
       const unconfigured = MqttConfig.unconfigured();
       _mqtt.applyConfig(unconfigured);
       return unconfigured;
     }
     final generation = _userScopeGeneration;
-    final cloud = await cloudStore.read(uid: userUid);
-    if (!_isCurrentUserScope(userUid, generation)) {
+    final cloud = await cloudStore.read(installationId: installationId);
+    if (!_isCurrentUserScope(installationId, generation)) {
       return const MqttConfig.unconfigured();
     }
     final resolved = cloud ?? const MqttConfig.unconfigured();
@@ -472,33 +452,22 @@ class AppState {
 
   Future<MqttConnectionStatus> testMqttConnection(MqttConfig config) =>
       _mqtt.testConnection(config);
-  Future<void> saveMqttConfig(MqttConfig config) async {
-    final access = await _accessControlService.resolve(currentUser);
-    final uid = access.role == KilowattsRole.installer
-        ? _selectedUserUid
-        : currentUser?.uid;
-    if (uid == null || uid.isEmpty) {
-      throw StateError('Select an installation before saving MQTT settings.');
-    }
-    if (_mqttCloudConfigStore != null) {
-      await _mqttCloudConfigStore.save(config, uid: uid);
-    }
-    await _mqtt.saveAndConnect(config);
-  }
+  Future<MqttConfig?> readSharedMqttConfig(String installationId) =>
+      _mqttCloudConfigStore?.read(installationId: installationId) ??
+      Future.value(null);
 
-  Future<MqttConfig?> readSharedMqttConfig(String uid) =>
-      _mqttCloudConfigStore?.read(uid: uid) ?? Future.value(null);
-
-  Future<void> saveSharedMqttConfig(String uid, MqttConfig config) async {
+  Future<void> saveSharedMqttConfig(
+    String installationId,
+    MqttConfig config,
+  ) async {
     final store = _mqttCloudConfigStore;
     if (store == null) return;
-    await store.save(config, uid: uid);
+    await store.save(config, installationId: installationId);
   }
 
-  Future<void> removeMqttConfig({required String uid}) async {
-    await _mqttCloudConfigStore?.delete(uid: uid);
-    await _mqtt.disconnect();
-  }
+  Future<void> removeMqttConfig({required String installationId}) =>
+      _mqttCloudConfigStore?.delete(installationId: installationId) ??
+      Future.value();
 
   Future<CommandOutcome> setLoadFixedState({
     required String nodeMac,
@@ -531,153 +500,64 @@ class AppState {
     );
   }
 
-  Future<CommandOutcome> applySafetyConfig(SafetyConfigDraft draft) {
-    InstallerNodeModel? central;
-    for (final node in installerNodes.value) {
-      if (node.isCentralNode) {
-        central = node;
-        break;
-      }
-    }
-    if (central == null || central.mac.isEmpty) {
-      return Future.value(
-        const CommandOutcome.failed(
-          'Central Node identity is not available yet. Wait for state/nodes.',
-        ),
-      );
-    }
-    return _mqtt.sendSafetyConfig(centralNodeMac: central.mac, draft: draft);
-  }
-
-  Future<CommandOutcome> requestOptimizationCycle() =>
-      _mqtt.requestOptimizationCycle();
-
-  Future<CommandOutcome> setOptimizerIntervalSeconds(int seconds) =>
-      _mqtt.setOptimizerIntervalSeconds(seconds);
-
   Future<CommandOutcome> setBatteryReserve(double reserveSoCPercent) =>
       _mqtt.setBatteryReserve(reserveSoCPercent);
 
-  Future<int?> readLastInstallerOptimizerIntervalSeconds() =>
-      _localState.readInstallerOptimizerIntervalSeconds(scope: _activeUserUid);
-
-  Future<void> cacheLastInstallerOptimizerIntervalSeconds(int seconds) =>
-      _localState.cacheInstallerOptimizerIntervalSeconds(
-        seconds,
-        scope: _activeUserUid,
-      );
-
-  Future<CommandOutcome> commissionNode({
-    required String nodeMac,
-    required String friendlyName,
-  }) => _mqtt.commissionNode(nodeMac: nodeMac, friendlyName: friendlyName);
-
-  Future<CommandOutcome> renameNode({
-    required String nodeMac,
-    required String friendlyName,
-  }) => _mqtt.renameNode(nodeMac: nodeMac, friendlyName: friendlyName);
-
-  Future<CommandOutcome> decommissionNode({required String nodeMac}) =>
-      _mqtt.decommissionNode(nodeMac: nodeMac);
-
-  Future<CommandOutcome> configureLoad(
-    InstallerLoadConfiguration configuration,
-  ) => _mqtt.configureLoad(configuration);
+  Future<CommandOutcome> configureLoad(LoadConfiguration configuration) =>
+      _mqtt.configureLoad(configuration);
 
   Future<CommandOutcome> removeLoad({
     required String nodeMac,
     required int relayPin,
   }) => _mqtt.removeLoad(nodeMac: nodeMac, relayPin: relayPin);
 
-  Future<CommandOutcome> configureBatterySensor({
-    required String centralNodeMac,
-    required int i2cAddress,
-    required double shuntResistanceOhms,
-    required double nominalVoltageVolts,
-    required double maximumExpectedCurrentAmps,
-    required double emaAlpha,
-    required double batteryCapacityAmpHours,
-    required double initialStateOfChargePercent,
-  }) => _mqtt.configureBatterySensor(
-    centralNodeMac: centralNodeMac,
-    i2cAddress: i2cAddress,
-    shuntResistanceOhms: shuntResistanceOhms,
-    nominalVoltageVolts: nominalVoltageVolts,
-    maximumExpectedCurrentAmps: maximumExpectedCurrentAmps,
-    emaAlpha: emaAlpha,
-    batteryCapacityAmpHours: batteryCapacityAmpHours,
-    initialStateOfChargePercent: initialStateOfChargePercent,
-  );
-
-  Future<Map<String, dynamic>?> readLastInstallerSafetyConfig() =>
-      _localState.readInstallerSafetyConfig(scope: _activeUserUid);
-
-  Future<void> cacheLastInstallerSafetyConfig(Map<String, dynamic> values) =>
-      _localState.cacheInstallerSafetyConfig(values, scope: _activeUserUid);
-
-  Future<Map<String, dynamic>?> readLastInstallerBatteryConfig() =>
-      _localState.readInstallerBatteryConfig(scope: _activeUserUid);
-
-  Future<void> cacheLastInstallerBatteryConfig(Map<String, dynamic> values) =>
-      _localState.cacheInstallerBatteryConfig(values, scope: _activeUserUid);
-
-  Future<CommandOutcome> setSimulationEnabled(bool enabled) =>
-      _mqtt.setSimulationEnabled(enabled);
-
-  Future<CommandOutcome> setSimulationValues({
-    double? batteryVoltageVolts,
-    double? batteryCurrentAmps,
-    double? stateOfChargePercent,
-  }) => _mqtt.setSimulationValues(
-    batteryVoltageVolts: batteryVoltageVolts,
-    batteryCurrentAmps: batteryCurrentAmps,
-    stateOfChargePercent: stateOfChargePercent,
-  );
-
-  Future<CommandOutcome> configureBatterySensorForSetup({
-    required String centralNodeMac,
-    required double nominalVoltageVolts,
-    required double maximumExpectedCurrentAmps,
-    required double batteryCapacityAmpHours,
-    required double initialStateOfChargePercent,
-  }) => configureBatterySensor(
-    centralNodeMac: centralNodeMac,
-    i2cAddress: 0x40,
-    shuntResistanceOhms: 0.1,
-    nominalVoltageVolts: nominalVoltageVolts,
-    maximumExpectedCurrentAmps: maximumExpectedCurrentAmps,
-    emaAlpha: 0.2,
-    batteryCapacityAmpHours: batteryCapacityAmpHours,
-    initialStateOfChargePercent: initialStateOfChargePercent,
-  );
-
   Stream<List<KilowattsUserAccess>> watchAccessUsers() =>
       _accessControlService.watchUsers();
 
   Stream<MqttPresence?> watchMqttPresence({
-    required String ownerUid,
+    required String installationId,
     required String userUid,
   }) =>
-      mqttPresenceStore?.watch(ownerUid: ownerUid, userUid: userUid) ??
+      mqttPresenceStore?.watch(
+        installationId: installationId,
+        userUid: userUid,
+      ) ??
       Stream.value(null);
 
-  Future<void> saveAccessUser({
-    required String email,
-    required String fullName,
-    required String phoneNumber,
-    required String role,
-  }) => _accessControlService.saveUser(
-    email: email,
-    fullName: fullName,
-    phoneNumber: phoneNumber,
-    role: role,
+  Future<String> assignHomeowner({
+    required String uid,
+    required String installationName,
+  }) => _accessControlService.assignHomeowner(
+    uid: uid,
+    installationName: installationName,
   );
 
-  Future<void> assignRole({required String email, required String role}) =>
-      _accessControlService.assignRole(email: email, role: role);
+  Future<void> revokeAccess(String uid) =>
+      _accessControlService.revokeAccess(uid);
 
-  Future<void> revokeAccess(String email) =>
-      _accessControlService.revokeAccess(email);
+  Stream<List<InstallationAsset>> watchInstallationAssets(
+    String installationId,
+  ) => _accessControlService.watchAssets(installationId);
+
+  Future<void> addInstallationAsset({
+    required String installationId,
+    required String deviceId,
+    required String name,
+    required String type,
+  }) => _accessControlService.addAsset(
+    installationId: installationId,
+    deviceId: deviceId,
+    name: name,
+    type: type,
+  );
+
+  Future<void> removeInstallationAsset({
+    required String installationId,
+    required String assetId,
+  }) => _accessControlService.removeAsset(
+    installationId: installationId,
+    assetId: assetId,
+  );
 
   Future<void> setAlertRead(String id, bool read) async {
     if (_disposed) return;
@@ -711,8 +591,7 @@ class AppState {
   Future<void> signOut() async {
     await _mqtt.disconnect();
     await _historyWriteQueue;
-    _selectedUserUid = null;
-    _applyUserScope(null);
+    _applyInstallationScope(null);
     await authService.signOut();
   }
 
@@ -735,7 +614,7 @@ class AppState {
     topology.dispose();
     loads.dispose();
     alerts.dispose();
-    installerNodes.dispose();
+    systemNodes.dispose();
     socHistory.dispose();
     batteryPowerHistory.dispose();
     activeLoadPowerHistory.dispose();

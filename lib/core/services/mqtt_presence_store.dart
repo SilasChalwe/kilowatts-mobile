@@ -23,28 +23,28 @@ class MqttPresenceStore {
   final FirebaseFirestore _firestore;
 
   DocumentReference<Map<String, dynamic>> _document(
-    String ownerUid,
+    String installationId,
     String userUid,
   ) => _firestore
       .collection('installations')
-      .doc(ownerUid)
+      .doc(installationId)
       .collection('presence')
       .doc(userUid);
 
   Future<void> write({
-    required String ownerUid,
+    required String installationId,
     required String userUid,
     required String status,
-  }) => _document(ownerUid, userUid).set({
+  }) => _document(installationId, userUid).set({
     'online': status == 'connected',
     'status': status,
     'lastSeen': FieldValue.serverTimestamp(),
   });
 
   Stream<MqttPresence?> watch({
-    required String ownerUid,
+    required String installationId,
     required String userUid,
-  }) => _document(ownerUid, userUid).snapshots().map((snapshot) {
+  }) => _document(installationId, userUid).snapshots().map((snapshot) {
     final data = snapshot.data();
     if (data == null) return null;
     final timestamp = data['lastSeen'];

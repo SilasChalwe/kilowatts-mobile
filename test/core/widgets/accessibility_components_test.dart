@@ -18,10 +18,7 @@ void main() {
       ),
     );
 
-    expect(
-      find.bySemanticsLabel('Active load power: 250 W'),
-      findsOneWidget,
-    );
+    expect(find.bySemanticsLabel('Active load power: 250 W'), findsOneWidget);
   });
 
   testWidgets('StatusBadge exposes status text independent of colour', (

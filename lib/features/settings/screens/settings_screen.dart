@@ -67,6 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             final fullName = loadedProfile?.fullName;
             final phoneNumber = loadedProfile?.phoneNumber;
             final userUid = loadedProfile?.uid ?? authUser?.uid;
+            final installationId = loadedProfile?.installationId;
             final role = loadedProfile?.role;
 
             final account = SectionCard(
@@ -128,6 +129,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   if (userUid != null)
                     SectionRow(label: 'User ID', value: userUid),
+                  if (installationId != null)
+                    SectionRow(label: 'Installation ID', value: installationId),
                   SectionRow(
                     label: 'Email verification',
                     valueWidget: StatusBadge(

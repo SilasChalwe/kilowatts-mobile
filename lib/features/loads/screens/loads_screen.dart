@@ -8,6 +8,7 @@ import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../models/load_model.dart';
 import '../widgets/load_card.dart';
+import '../widgets/load_creation_dialog.dart';
 import 'load_details_screen.dart';
 
 class LoadsScreen extends StatefulWidget {
@@ -51,6 +52,48 @@ class _LoadsScreenState extends State<LoadsScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)));
+  }
+
+  Future<void> _addLoad(List<LoadModel> loads) async {
+    final appState = AppStateScope.of(context);
+    final nodes = appState.systemNodes.value
+        .where(
+          (node) =>
+              node.isSmartNode &&
+              node.isCommissioned &&
+              node.availableRelayPins.any(
+                (pin) => !loads.any(
+                  (load) =>
+                      load.owningNodeMac == node.mac && load.relayPin == pin,
+                ),
+              ),
+        )
+        .toList(growable: false);
+    if (nodes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No commissioned node has a free relay channel.'),
+        ),
+      );
+      return;
+    }
+    final configuration = await showLoadCreationDialog(
+      context,
+      nodes: nodes,
+      existingLoads: loads,
+    );
+    if (configuration == null || !mounted) return;
+    final outcome = await appState.configureLoad(configuration);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          outcome.isConfirmed
+              ? 'Load added.'
+              : outcome.message ?? 'Central rejected the load.',
+        ),
+      ),
+    );
   }
 
   @override
@@ -101,14 +144,29 @@ class _LoadsScreenState extends State<LoadsScreen> {
                           ),
                         );
 
+                        final addButton = FilledButton.icon(
+                          onPressed: () => _addLoad(loads),
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: const Text('Add load'),
+                        );
+
                         if (!horizontal) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [search],
+                            children: [
+                              search,
+                              const SizedBox(height: AppSpacing.sm),
+                              SizedBox(
+                                width: double.infinity,
+                                child: addButton,
+                              ),
+                            ],
                           );
                         }
 
-                        return search;
+                        return Row(
+                          children: [search, const Spacer(), addButton],
+                        );
                       },
                     ),
                   ),

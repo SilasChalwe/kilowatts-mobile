@@ -77,7 +77,10 @@ class NodeDetailsScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('No loads reported', style: AppTextStyles.label),
+                            Text(
+                              'No loads reported',
+                              style: AppTextStyles.label,
+                            ),
                           ],
                         ),
                       ),
@@ -91,7 +94,8 @@ class NodeDetailsScreen extends StatelessWidget {
                         load: loads[index],
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => LoadDetailsScreen(load: loads[index]),
+                            builder: (_) =>
+                                LoadDetailsScreen(load: loads[index]),
                           ),
                         ),
                       ),

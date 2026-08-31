@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,10 +7,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/kilowatts_logo.dart';
-import '../../../core/widgets/status_badge.dart';
-import '../../admin/screens/installer_console_screen.dart';
-import '../../admin/screens/installer_operations_screen.dart';
-import '../../admin/screens/installer_users_screen.dart';
 import '../../alerts/models/alert_model.dart';
 import '../../alerts/screens/alerts_screen.dart';
 import '../../auth/data/access_control_service.dart';
@@ -23,9 +18,7 @@ import '../../settings/screens/settings_screen.dart';
 import '../../system/screens/system_topology_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key, this.installerMode = false});
-
-  final bool installerMode;
+  const MainShell({super.key});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -62,8 +55,7 @@ class _MainShellState extends State<MainShell> {
     if (uid == null || uid.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final mode = widget.installerMode ? 'installer' : 'homeowner';
-    final saved = prefs.getInt('kilowatts.destination.$mode.$uid');
+    final saved = prefs.getInt('kilowatts.destination.homeowner.$uid');
     if (saved == null || saved < 0) return;
     final destinationCount = _destinations().length;
     if (saved >= destinationCount) return;
@@ -71,110 +63,52 @@ class _MainShellState extends State<MainShell> {
   }
 
   List<_ProductDestination> _destinations() {
-    final appState = AppStateScope.of(context);
-    final selectedUserUid = appState.selectedUserUid;
-
-    Widget userPage(String name, Widget child) {
-      if (!widget.installerMode || selectedUserUid == null) return child;
-      return KeyedSubtree(
-        key: ValueKey('$name:$selectedUserUid'),
-        child: child,
-      );
-    }
-
-    final usersDestination = _ProductDestination(
-      label: 'Users & access',
-      icon: Icons.group_outlined,
-      selectedIcon: Icons.group_rounded,
-      page: InstallerUsersScreen(
-        embedded: true,
-        onSelect: (uid) {
-          appState.selectUser(uid);
-          setState(() => _currentIndex = 0);
-        },
-      ),
-      installerOnly: true,
-      showLiveStatus: false,
-    );
-
-    if (widget.installerMode && appState.selectedUserUid == null) {
-      return [usersDestination];
-    }
-
     return [
       _ProductDestination(
         label: 'Overview',
         icon: Icons.home_outlined,
         selectedIcon: Icons.home_rounded,
-        page: userPage(
-          'overview',
-          DashboardScreen(
-            onViewAllAlerts: () => setState(() => _currentIndex = 3),
-          ),
-        ),
+        page: const DashboardScreen(),
       ),
       _ProductDestination(
         label: 'Loads',
         icon: Icons.bolt_outlined,
         selectedIcon: Icons.bolt_rounded,
-        page: userPage('loads', const LoadsScreen()),
+        page: const LoadsScreen(),
       ),
       _ProductDestination(
         label: 'House topology',
         icon: Icons.account_tree_outlined,
         selectedIcon: Icons.account_tree_rounded,
-        page: userPage('topology', const SystemTopologyScreen()),
+        page: const SystemTopologyScreen(),
       ),
       _ProductDestination(
         label: 'Alerts',
         icon: Icons.notifications_outlined,
         selectedIcon: Icons.notifications_rounded,
-        page: userPage('alerts', const AlertsScreen()),
+        page: const AlertsScreen(),
         showUnreadBadge: true,
       ),
       _ProductDestination(
         label: 'Battery & power',
         icon: Icons.battery_charging_full_outlined,
         selectedIcon: Icons.battery_charging_full_rounded,
-        page: userPage('battery', const BatteryPowerScreen(embedded: true)),
+        page: const BatteryPowerScreen(embedded: true),
       ),
       _ProductDestination(
         label: 'Reports',
         icon: Icons.insights_outlined,
         selectedIcon: Icons.insights_rounded,
-        page: userPage('reports', const HistoryScreen(embedded: true)),
+        page: const HistoryScreen(embedded: true),
         showLiveStatus: false,
       ),
       _ProductDestination(
         label: 'Settings',
         icon: Icons.settings_outlined,
         selectedIcon: Icons.settings_rounded,
-        page: userPage('settings', const SettingsScreen(embedded: true)),
+        page: const SettingsScreen(embedded: true),
         showLiveStatus: false,
       ),
-      if (widget.installerMode) ...[
-        _ProductDestination(
-          label: 'Installer console',
-          icon: Icons.build_outlined,
-          selectedIcon: Icons.build_rounded,
-          page: userPage(
-            'console',
-            const InstallerConsoleScreen(embedded: true),
-          ),
-          installerOnly: true,
-        ),
-        _ProductDestination(
-          label: 'System operations',
-          icon: Icons.tune_outlined,
-          selectedIcon: Icons.tune_rounded,
-          page: userPage(
-            'operations',
-            const InstallerOperationsScreen(embedded: true),
-          ),
-          installerOnly: true,
-        ),
-        usersDestination,
-      ],
     ];
   }
 
@@ -183,142 +117,55 @@ class _MainShellState extends State<MainShell> {
     setState(() => _currentIndex = index);
     final uid = AppStateScope.of(context).currentUser?.uid;
     if (uid == null || uid.isEmpty) return;
-    final mode = widget.installerMode ? 'installer' : 'homeowner';
     SharedPreferences.getInstance().then(
-      (prefs) => prefs.setInt('kilowatts.destination.$mode.$uid', index),
+      (prefs) => prefs.setInt('kilowatts.destination.homeowner.$uid', index),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final appState = AppStateScope.of(context);
     final destinations = _destinations();
     final safeIndex = _currentIndex < destinations.length ? _currentIndex : 0;
     final current = destinations[safeIndex];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final usePersistentSidebar =
-            kIsWeb && constraints.maxWidth >= AppBreakpoints.desktop;
-
-        if (usePersistentSidebar) {
-          return Scaffold(
-            body: SafeArea(
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 264,
-                    child: _NavigationPanel(
-                      installerMode: widget.installerMode,
-                      destinations: destinations,
-                      selectedIndex: safeIndex,
-                      profile: _profile!,
-                      onSelect: _selectDestination,
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _DesktopUtilityBar(
-                          title: current.label,
-                          showLiveStatus: current.showLiveStatus,
-                          userUid: widget.installerMode
-                              ? appState.selectedUserUid
-                              : null,
-                        ),
-                        Expanded(
-                          child: IndexedStack(
-                            index: safeIndex,
-                            children: destinations
-                                .map((item) => item.page)
-                                .toList(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return Scaffold(
-          key: _compactScaffoldKey,
-          appBar: AppBar(
-            backgroundColor: AppColors.surface,
-            leading: IconButton(
-              tooltip: 'Open navigation',
-              onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
-              icon: const Icon(Icons.menu_rounded),
-            ),
-            title: Text(current.label),
-            actions: current.showLiveStatus
-                ? const [
-                    Padding(
-                      padding: EdgeInsets.only(right: AppSpacing.sm),
-                      child: _HeaderConnectionStatus(),
-                    ),
-                  ]
-                : null,
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(1),
-              child: Divider(height: 1),
-            ),
-          ),
-          drawer: Drawer(
-            width: 292,
-            backgroundColor: AppColors.sidebar,
-            child: SafeArea(
-              child: _NavigationPanel(
-                installerMode: widget.installerMode,
-                destinations: destinations,
-                selectedIndex: safeIndex,
-                profile: _profile!,
-                onSelect: (index) =>
-                    _selectDestination(index, closeDrawer: true),
-              ),
-            ),
-          ),
-          body: IndexedStack(
-            index: safeIndex,
-            children: destinations.map((item) => item.page).toList(),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _DesktopUtilityBar extends StatelessWidget {
-  const _DesktopUtilityBar({
-    required this.title,
-    required this.showLiveStatus,
-    this.userUid,
-  });
-
-  final String title;
-  final bool showLiveStatus;
-  final String? userUid;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+    return Scaffold(
+      key: _compactScaffoldKey,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        leading: IconButton(
+          tooltip: 'Open navigation',
+          onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
+          icon: const Icon(Icons.menu_rounded),
+        ),
+        title: Text(current.label),
+        actions: current.showLiveStatus
+            ? const [
+                Padding(
+                  padding: EdgeInsets.only(right: AppSpacing.sm),
+                  child: _HeaderConnectionStatus(),
+                ),
+              ]
+            : null,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
       ),
-      child: Row(
-        children: [
-          Expanded(child: Text(title, style: AppTextStyles.title)),
-          if (userUid != null) ...[
-            StatusBadge(label: userUid!, tone: StatusTone.neutral),
-            const SizedBox(width: AppSpacing.sm),
-          ],
-          if (showLiveStatus) const _HeaderConnectionStatus(),
-        ],
+      drawer: Drawer(
+        width: 292,
+        backgroundColor: AppColors.sidebar,
+        child: SafeArea(
+          child: _NavigationPanel(
+            destinations: destinations,
+            selectedIndex: safeIndex,
+            profile: _profile!,
+            onSelect: (index) => _selectDestination(index, closeDrawer: true),
+          ),
+        ),
+      ),
+      body: IndexedStack(
+        index: safeIndex,
+        children: destinations.map((item) => item.page).toList(),
       ),
     );
   }
@@ -371,7 +218,6 @@ class _ProductDestination {
     required this.icon,
     required this.selectedIcon,
     required this.page,
-    this.installerOnly = false,
     this.showLiveStatus = true,
     this.showUnreadBadge = false,
   });
@@ -380,21 +226,18 @@ class _ProductDestination {
   final IconData icon;
   final IconData selectedIcon;
   final Widget page;
-  final bool installerOnly;
   final bool showLiveStatus;
   final bool showUnreadBadge;
 }
 
 class _NavigationPanel extends StatelessWidget {
   const _NavigationPanel({
-    required this.installerMode,
     required this.destinations,
     required this.selectedIndex,
     required this.profile,
     required this.onSelect,
   });
 
-  final bool installerMode;
   final List<_ProductDestination> destinations;
   final int selectedIndex;
   final Future<InstallationAccess> profile;
@@ -403,10 +246,6 @@ class _NavigationPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-    final firstInstaller = destinations.indexWhere(
-      (item) => item.installerOnly,
-    );
-
     return ColoredBox(
       color: AppColors.sidebar,
       child: Column(
@@ -442,25 +281,12 @@ class _NavigationPanel extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               children: [
-                for (var i = 0; i < destinations.length; i++) ...[
-                  if (i == firstInstaller && firstInstaller >= 0) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                      child: Text(
-                        'INSTALLATION',
-                        style: AppTextStyles.overline.copyWith(
-                          color: AppColors.sidebarTextMuted,
-                        ),
-                      ),
-                    ),
-                  ],
+                for (var i = 0; i < destinations.length; i++)
                   _SidebarDestination(
                     destination: destinations[i],
                     selected: selectedIndex == i,
                     onTap: () => onSelect(i),
                   ),
-                ],
               ],
             ),
           ),
@@ -476,7 +302,7 @@ class _NavigationPanel extends StatelessWidget {
                     ? name!
                     : email ?? 'Signed in';
                 final roleLabel = profile == null
-                    ? (installerMode ? 'Installer' : 'Homeowner')
+                    ? 'Homeowner'
                     : _roleLabel(profile.role);
 
                 return Container(

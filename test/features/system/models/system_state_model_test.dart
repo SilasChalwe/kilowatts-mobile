@@ -28,6 +28,7 @@ const _wirePayload = {
     'requiredRuntimeAchievable': true,
   },
   'powerFlow': {
+    'powerFlowValid': true,
     'batteryMaximumPowerWatts': 180.0,
     'mainMaximumPowerWatts': 200.0,
     'fixedOnPowerWatts': 12.0,
@@ -108,7 +109,7 @@ void main() {
       expect(state.lastOptimizationAt, isNotNull);
     });
 
-    test('missing nested objects fall back to all-null fields, never throw', () {
+    test('missing nested objects produce all-null fields without throwing', () {
       final state = SystemStateModel.fromJson(const {'schemaVersion': 1});
       expect(state.batterySocPercent, isNull);
       expect(state.availablePowerW, isNull);
@@ -141,14 +142,6 @@ void main() {
 
         // battery.* fields are unaffected by powerFlowValid.
         expect(state.batterySocPercent, 76.5);
-      },
-    );
-
-    test(
-      'a missing powerFlowValid field (older firmware) is treated as valid',
-      () {
-        final state = SystemStateModel.fromJson(_wirePayload);
-        expect(state.availablePowerW, 150.0);
       },
     );
   });

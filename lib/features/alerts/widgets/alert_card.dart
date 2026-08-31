@@ -44,7 +44,9 @@ class AlertCard extends StatelessWidget {
     final unread = !alert.acknowledged;
 
     return Material(
-      color: unread ? AppColors.primarySoft.withValues(alpha: 0.42) : AppColors.surface,
+      color: unread
+          ? AppColors.primarySoft.withValues(alpha: 0.42)
+          : AppColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onOpen,

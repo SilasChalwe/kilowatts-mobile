@@ -19,11 +19,15 @@ class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
 class _MockAccessControlService extends Mock implements AccessControlService {}
 
 class _FakeMqttService extends MqttService {
-  final systemStateController =
-      StreamController<SystemStateModel>.broadcast(sync: true);
-  final topologyController =
-      StreamController<TopologyModel>.broadcast(sync: true);
-  final loadsController = StreamController<List<LoadModel>>.broadcast(sync: true);
+  final systemStateController = StreamController<SystemStateModel>.broadcast(
+    sync: true,
+  );
+  final topologyController = StreamController<TopologyModel>.broadcast(
+    sync: true,
+  );
+  final loadsController = StreamController<List<LoadModel>>.broadcast(
+    sync: true,
+  );
   final alertController = StreamController<AlertModel>.broadcast(sync: true);
   final connectionStatusController =
       StreamController<MqttConnectionStatus>.broadcast(sync: true);
@@ -31,7 +35,8 @@ class _FakeMqttService extends MqttService {
       StreamController<CentralAvailability>.broadcast(sync: true);
 
   @override
-  Stream<SystemStateModel> get systemStateStream => systemStateController.stream;
+  Stream<SystemStateModel> get systemStateStream =>
+      systemStateController.stream;
 
   @override
   Stream<TopologyModel> get topologyStream => topologyController.stream;
@@ -90,33 +95,44 @@ void main() {
     appState.dispose();
   });
 
-  test('a system/state message updates systemState and lastLiveSystemUpdate only', () {
-    var systemStateNotifications = 0;
-    var loadsNotifications = 0;
-    var topologyNotifications = 0;
+  test(
+    'a system/state message updates systemState and lastLiveSystemUpdate only',
+    () {
+      var systemStateNotifications = 0;
+      var loadsNotifications = 0;
+      var topologyNotifications = 0;
 
-    appState.systemState.addListener(() => systemStateNotifications++);
-    appState.loads.addListener(() => loadsNotifications++);
-    appState.topology.addListener(() => topologyNotifications++);
+      appState.systemState.addListener(() => systemStateNotifications++);
+      appState.loads.addListener(() => loadsNotifications++);
+      appState.topology.addListener(() => topologyNotifications++);
 
-    expect(appState.lastLiveSystemUpdate.value, isNull);
+      expect(appState.lastLiveSystemUpdate.value, isNull);
 
-    mqtt.systemStateController.add(
-      SystemStateModel.fromJson(const {
-        'battery': {
-          'stateOfChargePercent': 55.0,
-          'voltageVolts': 12.4,
-          'currentAmps': 3.0,
-        },
-      }),
-    );
+      mqtt.systemStateController.add(
+        SystemStateModel.fromJson(const {
+          'battery': {
+            'stateOfChargePercent': 55.0,
+            'voltageVolts': 12.4,
+            'currentAmps': 3.0,
+          },
+        }),
+      );
 
-    expect(systemStateNotifications, 1);
-    expect(loadsNotifications, 0, reason: 'unrelated slices must not rebuild');
-    expect(topologyNotifications, 0, reason: 'unrelated slices must not rebuild');
-    expect(appState.systemState.value?.batterySocPercent, 55.0);
-    expect(appState.lastLiveSystemUpdate.value, isNotNull);
-  });
+      expect(systemStateNotifications, 1);
+      expect(
+        loadsNotifications,
+        0,
+        reason: 'unrelated slices must not rebuild',
+      );
+      expect(
+        topologyNotifications,
+        0,
+        reason: 'unrelated slices must not rebuild',
+      );
+      expect(appState.systemState.value?.batterySocPercent, 55.0);
+      expect(appState.lastLiveSystemUpdate.value, isNotNull);
+    },
+  );
 
   test('SoC and battery-power history capture live system-state updates', () {
     mqtt.systemStateController.add(

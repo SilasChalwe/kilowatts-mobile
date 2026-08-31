@@ -11,10 +11,8 @@ double? _sumOrNull(double? a, double? b) {
 /// Every field is nullable; a field the firmware has not published yet must
 /// render as "Unavailable", never a fabricated number.
 ///
-/// Configured/physical safety limits (min SoC, current limits, etc.) are
-/// not part of this payload — firmware does not yet publish a
-/// `config/system` topic, so there is no live source for them. See
-/// [SafetyConfigDraft] for the setup-wizard-only draft equivalent.
+/// Configured/physical safety limits not present in this payload are never
+/// fabricated by the application.
 class SystemStateModel {
   const SystemStateModel({
     this.batterySocPercent,
@@ -56,12 +54,10 @@ class SystemStateModel {
   final double? batteryCurrent;
   final bool? batterySensorConfigured;
 
-  /// The installer-entered battery capacity (Ah) — the live, authoritative
-  /// source of this value. Not a per-device local cache: any installer
-  /// session sees the same number Central is actually configured with.
+  /// The configured battery capacity (Ah), live from Central.
   final double? batteryCapacityAmpHours;
 
-  /// The installer-entered nameplate voltage (V) — distinct from
+  /// The configured nameplate voltage (V) — distinct from
   /// [batteryVoltage], which is the live measured reading.
   final double? batteryNominalVoltageV;
 
@@ -79,28 +75,26 @@ class SystemStateModel {
   /// actually draw down to before battery protection engages.
   final double? usableEnergyWattHours;
 
-  /// Whether an installer has configured power limits (and therefore a
+  /// Whether power limits (and therefore a
   /// reserve threshold) at all yet. `reserveSoCPercent` is not meaningful
   /// when this is false.
   final bool? reserveConfigured;
 
   /// The currently configured battery reserve threshold (%). This is the
-  /// only live source of that value — it is set via the installer's Safety
-  /// Policy or the homeowner's reserve control, but never echoed back
-  /// anywhere except this field.
+  /// only live source of that value and is controlled by the homeowner.
   final double? reserveSoCPercent;
 
-  /// Whether an installer has set a required-runtime target at all
+  /// Whether a required-runtime target has been set at all
   /// (`requiredRuntimeHours` is 0/not meaningful when this is false).
   final bool? requiredRuntimeConfigured;
 
   /// The currently configured required-runtime target (hours), live from
-  /// Central — the same value the installer's Safety Policy sets.
+  /// Central.
   final double? requiredRuntimeHours;
 
   final double? sustainablePowerW;
 
-  /// Conservative total derived from relay state and installer ratings.
+  /// Conservative total derived from relay state and configured ratings.
   final double? estimatedTotalLoadPowerW;
   final double? availablePowerW;
   final double? fixedLoadPowerW;
@@ -163,9 +157,9 @@ class SystemStateModel {
     // power budget (after its first successful optimization cycle, with
     // configuration + a fresh SoC reading). Before that, every numeric
     // field in the object is an unset 0, not a real reading — treat it as
-    // absent rather than display a misleading zero. Missing field (older
-    // firmware/cached data) is treated as valid for backward compatibility.
-    final powerFlowValid = power.boolOrNull('powerFlowValid') ?? true;
+    // absent rather than display a misleading zero. The current wire contract
+    // requires an explicit validity flag.
+    final powerFlowValid = power.boolOrNull('powerFlowValid') == true;
     double? validPower(String key) =>
         powerFlowValid ? power.doubleOrNull(key) : null;
 

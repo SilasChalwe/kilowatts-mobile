@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
 class AuthService {
   AuthService({FirebaseAuth? firebaseAuth, this._firestore})
@@ -13,14 +12,6 @@ class AuthService {
   Stream<User?> get userChanges => _auth.userChanges();
 
   User? get currentUser => _auth.currentUser;
-
-  /// Makes the web session survive browser/app restarts until the user
-  /// explicitly signs out. Native Firebase Auth already persists the current
-  /// user, so no additional credential storage is needed there.
-  Future<void> initializePersistence() async {
-    if (!kIsWeb) return;
-    await _auth.setPersistence(Persistence.LOCAL);
-  }
 
   Future<void> signIn({required String email, required String password}) async {
     final credential = await _auth.signInWithEmailAndPassword(
@@ -53,12 +44,13 @@ class AuthService {
   }
 
   Future<void> _ensureProfile(User user, {String? fullName}) async {
-    final email = user.email;
+    final email = user.email?.trim();
     if (email == null || email.isEmpty) return;
-    final profile = firestore.collection('users').doc(email.toLowerCase());
+    final profile = firestore.collection('users').doc(user.uid);
     final existing = await profile.get();
     await profile.set({
       'uid': user.uid,
+      'email': email,
       if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
       'updatedAt': FieldValue.serverTimestamp(),
       if (!existing.exists) 'role': 'unassigned',

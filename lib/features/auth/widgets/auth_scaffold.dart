@@ -24,7 +24,8 @@ class AuthScaffold extends StatelessWidget {
           children: [
             Positioned.fill(
               child: SingleChildScrollView(
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.pageMobile,
                   vertical: AppSpacing.xl,
@@ -44,7 +45,9 @@ class AuthScaffold extends StatelessWidget {
                         border: Border.all(color: AppColors.border),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.textPrimary.withValues(alpha: 0.035),
+                            color: AppColors.textPrimary.withValues(
+                              alpha: 0.035,
+                            ),
                             blurRadius: 28,
                             offset: const Offset(0, 10),
                           ),
