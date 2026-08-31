@@ -4,18 +4,17 @@ import 'dart:math';
 
 import 'package:mqtt_client/mqtt_client.dart';
 
-import '../../features/admin/models/installer_node_model.dart';
 import '../../features/alerts/models/alert_model.dart';
+import '../../features/loads/models/load_configuration.dart';
 import '../../features/loads/models/load_model.dart';
-import '../../features/setup/models/setup_session.dart';
 import '../../features/system/models/system_state_model.dart';
+import '../../features/system/models/system_node_model.dart';
 import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
 import 'command_outcome.dart';
 import 'local_state_service.dart';
 import 'mqtt_client_adapter.dart';
 import 'mqtt_config.dart';
-import 'mqtt_credentials_store.dart';
 
 enum MqttConnectionStatus {
   notConfigured,
@@ -28,37 +27,44 @@ enum MqttConnectionStatus {
   networkFailure,
 }
 
-/// Single MQTT boundary shared by homeowner and installer experiences.
+enum CentralAvailability { unknown, online, offline, stale }
+
+class _PendingCommand {
+  _PendingCommand({required this.waitForFinalAfterAccepted});
+
+  final bool waitForFinalAfterAccepted;
+  final Completer<CommandOutcome> completer = Completer<CommandOutcome>();
+}
+
+/// Homeowner MQTT boundary for one assigned installation.
 class MqttService {
-  MqttService({
-    MqttConfig? config,
-    MqttCredentialsStore? credentialsStore,
-    this.cache,
-  }) : _config = config ?? const MqttConfig.unconfigured(),
-       _credentialsStore = credentialsStore ?? MqttCredentialsStore();
+  MqttService({MqttConfig? config, this.cache})
+    : _config = config ?? const MqttConfig.unconfigured();
 
   MqttConfig _config;
-  final MqttCredentialsStore _credentialsStore;
   final LocalStateService? cache;
+  String? _cacheScope;
 
   MqttClient? _client;
+  Future<void>? _connectOperation;
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
   bool _manualDisconnect = false;
-  bool _credentialsLoaded = false;
   bool _disposed = false;
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>?
   _updatesSubscription;
 
   final _statusController = StreamController<MqttConnectionStatus>.broadcast();
+  final _availabilityController =
+      StreamController<CentralAvailability>.broadcast();
   final _systemStateController = StreamController<SystemStateModel>.broadcast();
   final _topologyController = StreamController<TopologyModel>.broadcast();
   final _loadsController = StreamController<List<LoadModel>>.broadcast();
   final _alertController = StreamController<AlertModel>.broadcast();
-  final _installerNodesController =
-      StreamController<List<InstallerNodeModel>>.broadcast();
+  final _systemNodesController =
+      StreamController<List<SystemNodeModel>>.broadcast();
 
-  final Map<String, Completer<CommandOutcome>> _pendingCommands = {};
+  final Map<String, _PendingCommand> _pendingCommands = {};
 
   MqttConnectionStatus _status = MqttConnectionStatus.disconnected;
   MqttConnectionStatus get currentStatus => _status;
@@ -66,30 +72,50 @@ class MqttService {
 
   Stream<MqttConnectionStatus> get connectionStatusStream =>
       _statusController.stream;
+  Stream<CentralAvailability> get centralAvailabilityStream =>
+      _availabilityController.stream;
   Stream<SystemStateModel> get systemStateStream =>
       _systemStateController.stream;
   Stream<TopologyModel> get topologyStream => _topologyController.stream;
   Stream<List<LoadModel>> get loadsStream => _loadsController.stream;
   Stream<AlertModel> get alertStream => _alertController.stream;
-  Stream<List<InstallerNodeModel>> get installerNodesStream =>
-      _installerNodesController.stream;
+  Stream<List<SystemNodeModel>> get systemNodesStream =>
+      _systemNodesController.stream;
 
   bool get isConfigured => _config.isConfigured;
 
   Future<MqttConfig> loadMqttConfig() async {
-    if (!_credentialsLoaded) {
-      _credentialsLoaded = true;
-      final saved = await _credentialsStore.read();
-      if (saved != null) _config = saved;
-    }
     return _config;
   }
 
-  Future<void> connect() async {
+  /// Applies the Firebase-owned configuration without local persistence.
+  void applyConfig(MqttConfig config) {
+    _config = config;
+  }
+
+  void applyCacheScope(String? scope) {
+    _cacheScope = scope;
+  }
+
+  Future<void> connect() {
     if (_disposed ||
         (_status == MqttConnectionStatus.connected && _client != null)) {
-      return;
+      return Future<void>.value();
     }
+
+    final running = _connectOperation;
+    if (running != null) return running;
+
+    final operation = _connectInternal();
+    _connectOperation = operation;
+    return operation.whenComplete(() {
+      if (identical(_connectOperation, operation)) {
+        _connectOperation = null;
+      }
+    });
+  }
+
+  Future<void> _connectInternal() async {
     _manualDisconnect = false;
     await loadMqttConfig();
 
@@ -101,8 +127,6 @@ class MqttService {
   }
 
   Future<void> saveAndConnect(MqttConfig config) async {
-    await _credentialsStore.save(config);
-    _credentialsLoaded = true;
     _config = config;
     _manualDisconnect = false;
     _reconnectTimer?.cancel();
@@ -116,6 +140,9 @@ class MqttService {
     }
     final previousClient = _client;
     _client = null;
+    _failPendingCommands(
+      'Connection changed before Central acknowledged the command',
+    );
     previousClient?.disconnect();
     await _attemptConnect();
   }
@@ -123,8 +150,7 @@ class MqttService {
   Future<MqttConnectionStatus> testConnection(MqttConfig config) async {
     if (!config.isConfigured) return MqttConnectionStatus.notConfigured;
 
-    final clientId =
-        'kilowatts-mobile-test-${Random().nextInt(0xFFFFFFF).toRadixString(16)}';
+    final clientId = 'kw-test-${Random().nextInt(0xFFFFFFF).toRadixString(16)}';
     final client = _buildClient(config, clientId);
 
     try {
@@ -154,8 +180,7 @@ class MqttService {
     if (_disposed) return;
     _setStatus(MqttConnectionStatus.connecting);
 
-    final clientId =
-        'kilowatts-mobile-${Random().nextInt(0xFFFFFFF).toRadixString(16)}';
+    final clientId = 'kw-${Random().nextInt(0xFFFFFFF).toRadixString(16)}';
     final client = _buildClient(_config, clientId);
     client.onDisconnected = () => _handleDisconnected(client);
     _client = client;
@@ -209,6 +234,10 @@ class MqttService {
     _updatesSubscription = null;
     if (updates != null) unawaited(updates.cancel());
     _client = null;
+    _failPendingCommands(
+      'Connection lost before Central acknowledged the command',
+    );
+    _availabilityController.add(CentralAvailability.unknown);
     if (_manualDisconnect) {
       _setStatus(MqttConnectionStatus.disconnected);
       return;
@@ -248,6 +277,10 @@ class MqttService {
       final raw = MqttPublishPayload.bytesToStringAsString(
         publish.payload.message,
       );
+      if (received.topic == _topics.status) {
+        _routeAvailability(raw);
+        continue;
+      }
       Map<String, dynamic> decoded;
       try {
         decoded = (jsonDecode(raw) as Map).cast<String, dynamic>();
@@ -258,18 +291,36 @@ class MqttService {
     }
   }
 
+  void _routeAvailability(String raw) {
+    switch (raw.trim().toLowerCase()) {
+      case 'online':
+        _availabilityController.add(CentralAvailability.online);
+        return;
+      case 'offline':
+        _availabilityController.add(CentralAvailability.offline);
+        return;
+    }
+  }
+
+  void _markCentralActive() {
+    _availabilityController.add(CentralAvailability.online);
+  }
+
   void _routeMessage(String topic, Map<String, dynamic> payload) {
     if (topic == _topics.stateSystem) {
+      _markCentralActive();
       final state = SystemStateModel.fromJson(payload);
       _systemStateController.add(state);
-      cache?.cacheSystemState(payload);
+      cache?.cacheSystemState(payload, scope: _cacheScope);
       return;
     }
     if (topic == _topics.stateTree) {
+      _markCentralActive();
       _topologyController.add(TopologyModel.fromJson(payload));
       return;
     }
     if (topic == _topics.stateLoads) {
+      _markCentralActive();
       final loadsJson =
           (payload['loads'] as List?)
               ?.whereType<Map>()
@@ -278,40 +329,52 @@ class MqttService {
           const <Map<String, dynamic>>[];
       final loads = loadsJson.map(LoadModel.fromJson).toList();
       _loadsController.add(loads);
-      cache?.cacheLoads(loadsJson);
+      cache?.cacheLoads(loadsJson, scope: _cacheScope);
       return;
     }
     if (topic == _topics.stateNodes) {
+      _markCentralActive();
       final nodes =
           (payload['nodes'] as List?)
               ?.whereType<Map>()
               .map((e) => e.cast<String, dynamic>())
-              .map(InstallerNodeModel.fromJson)
+              .map(SystemNodeModel.fromJson)
               .toList(growable: false) ??
-          const <InstallerNodeModel>[];
-      _installerNodesController.add(nodes);
+          const <SystemNodeModel>[];
+      _systemNodesController.add(nodes);
       return;
     }
     if (topic == _topics.events) {
+      _markCentralActive();
       _alertController.add(AlertModel.fromJson(payload));
       return;
     }
-    if (topic == _topics.acks) _resolveAck(payload);
+    if (topic == _topics.alerts) {
+      _markCentralActive();
+      _alertController.add(AlertModel.fromJson(payload));
+      return;
+    }
+    if (topic == _topics.acks) {
+      _markCentralActive();
+      _resolveAck(payload);
+    }
   }
 
   void _resolveAck(Map<String, dynamic> payload) {
     final id = payload['commandId']?.toString();
     if (id == null) return;
-    final completer = _pendingCommands[id];
-    if (completer == null || completer.isCompleted) return;
+    final pending = _pendingCommands[id];
+    if (pending == null || pending.completer.isCompleted) return;
 
     final status = payload['status']?.toString().toUpperCase();
-    if (status == 'ACCEPTED') return;
+    if (status == 'ACCEPTED' && pending.waitForFinalAfterAccepted) return;
 
     _pendingCommands.remove(id);
     final accepted =
-        status == 'APPLIED' || (status == null && payload['accepted'] == true);
-    completer.complete(
+        status == 'APPLIED' ||
+        status == 'ACCEPTED' ||
+        (status == null && payload['accepted'] == true);
+    pending.completer.complete(
       accepted
           ? CommandOutcome.confirmed(payload['reason']?.toString())
           : CommandOutcome.failed(
@@ -358,126 +421,37 @@ class MqttService {
     return on ? 'AUTO_ON' : 'AUTO_OFF';
   }
 
-  /// Configures the power policy through CONFIGURE_POWER_LIMITS, which is
-  /// the command implemented by the current Central firmware.
-  Future<CommandOutcome> sendSafetyConfig({
-    required String centralNodeMac,
-    required SafetyConfigDraft draft,
-  }) {
-    return _sendConfigCommand({
-      'action': 'CONFIGURE_POWER_LIMITS',
-      'nodeMac': centralNodeMac,
-      'powerLimits': {
-        'minimumStateOfChargePercent': draft.lowBatteryCutoffPercent,
-        'maximumBatteryDischargeCurrentAmps': draft.maxBatteryDischargeCurrentA,
-        'maximumMainCurrentAmps': draft.mainCurrentLimitA,
-        'requiredRuntimeHours': draft.targetRuntimeHours,
-      },
-    });
-  }
-
-  Future<CommandOutcome> requestOptimizationCycle() {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSystem, commandId, {
-      'commandId': commandId,
-      'action': 'REQUEST_OPTIMIZATION_CYCLE',
-    });
-  }
-
-  Future<CommandOutcome> setOptimizerIntervalSeconds(int seconds) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSystem, commandId, {
-      'commandId': commandId,
-      'action': 'SET_OPTIMIZER_INTERVAL',
-      'optimizerIntervalSeconds': seconds,
-    });
-  }
-
-  Future<CommandOutcome> commissionNode({
-    required String nodeMac,
-    required String friendlyName,
-  }) {
-    return _sendConfigCommand({
-      'action': 'COMMISSION_NODE',
-      'nodeMac': nodeMac,
-      'friendlyName': friendlyName,
-    });
-  }
-
-  Future<CommandOutcome> renameNode({
-    required String nodeMac,
-    required String friendlyName,
-  }) {
-    return _sendConfigCommand({
-      'action': 'RENAME_NODE',
-      'nodeMac': nodeMac,
-      'friendlyName': friendlyName,
-    });
-  }
-
-  Future<CommandOutcome> decommissionNode({required String nodeMac}) {
-    return _sendConfigCommand({
-      'action': 'DECOMMISSION_NODE',
-      'nodeMac': nodeMac,
-    });
-  }
-
-  Future<CommandOutcome> configureLoad(
-    InstallerLoadConfiguration configuration,
-  ) {
+  Future<CommandOutcome> configureLoad(LoadConfiguration configuration) {
     return _sendConfigCommand({
       'action': 'CONFIGURE_LOAD',
       ...configuration.toCommandPayload(),
     });
   }
 
-  Future<CommandOutcome> configureBatterySensor({
-    required String centralNodeMac,
-    required int i2cAddress,
-    required double shuntResistanceOhms,
-    required double nominalVoltageVolts,
-    required double maximumExpectedCurrentAmps,
-    required double emaAlpha,
-    required double batteryCapacityAmpHours,
-    required double initialStateOfChargePercent,
+  /// Removes a single Load's registration from its owning node. Matches
+  /// firmware's REMOVE_LOAD wire shape exactly: a top-level `relayPin`, not
+  /// nested under a `load` object (unlike CONFIGURE_LOAD).
+  Future<CommandOutcome> removeLoad({
+    required String nodeMac,
+    required int relayPin,
   }) {
     return _sendConfigCommand({
-      'action': 'CONFIGURE_BATTERY_SENSOR',
-      'nodeMac': centralNodeMac,
-      'batterySensor': {
-        'i2cAddress': i2cAddress,
-        'shuntResistanceOhms': shuntResistanceOhms,
-        'nominalVoltageVolts': nominalVoltageVolts,
-        'maximumExpectedCurrentAmps': maximumExpectedCurrentAmps,
-        'emaAlpha': emaAlpha,
-        'batteryCapacityAmpHours': batteryCapacityAmpHours,
-        'initialStateOfChargePercent': initialStateOfChargePercent,
-      },
+      'action': 'REMOVE_LOAD',
+      'nodeMac': nodeMac,
+      'relayPin': relayPin,
     });
   }
 
-  Future<CommandOutcome> setSimulationEnabled(bool enabled) {
+  /// Homeowner-safe battery reserve change. Deliberately published on its
+  /// own topic (not `commands/config`) so a homeowner's broker credentials
+  /// can be scoped to it without also granting commissioning/load-config/
+  /// battery-sensor access.
+  Future<CommandOutcome> setBatteryReserve(double reserveSoCPercent) {
     final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSimulation, commandId, {
+    return _publishCommand(_topics.commandsReserve, commandId, {
       'commandId': commandId,
-      'action': enabled ? 'ENABLE' : 'DISABLE',
-    });
-  }
-
-  Future<CommandOutcome> setSimulationValues({
-    double? batteryVoltageVolts,
-    double? batteryCurrentAmps,
-    double? stateOfChargePercent,
-  }) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsSimulation, commandId, {
-      'commandId': commandId,
-      'action': 'SET_VALUES',
-      'values': {
-        'batteryVoltageVolts': ?batteryVoltageVolts,
-        'batteryCurrentAmps': ?batteryCurrentAmps,
-        'stateOfChargePercent': ?stateOfChargePercent,
-      },
+      'action': 'SET_BATTERY_RESERVE',
+      'reserveSoCPercent': reserveSoCPercent,
     });
   }
 
@@ -486,14 +460,15 @@ class MqttService {
     return _publishCommand(_topics.commandsConfig, commandId, {
       'commandId': commandId,
       ...payload,
-    });
+    }, waitForFinalAfterAccepted: true);
   }
 
   Future<CommandOutcome> _publishCommand(
     String topic,
     int commandId,
-    Map<String, dynamic> payload,
-  ) {
+    Map<String, dynamic> payload, {
+    bool waitForFinalAfterAccepted = false,
+  }) {
     final client = _client;
     if (client == null || _status != MqttConnectionStatus.connected) {
       return Future.value(
@@ -502,19 +477,31 @@ class MqttService {
     }
 
     final idKey = commandId.toString();
-    final completer = Completer<CommandOutcome>();
-    _pendingCommands[idKey] = completer;
+    final pending = _PendingCommand(
+      waitForFinalAfterAccepted: waitForFinalAfterAccepted,
+    );
+    _pendingCommands[idKey] = pending;
 
     final builder = MqttClientPayloadBuilder()..addString(jsonEncode(payload));
     client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
 
-    return completer.future.timeout(
+    return pending.completer.future.timeout(
       AppConstants.commandAckTimeout,
       onTimeout: () {
         _pendingCommands.remove(idKey);
         return const CommandOutcome.failed('No response from the Central Node');
       },
     );
+  }
+
+  void _failPendingCommands(String reason) {
+    final pending = _pendingCommands.values.toList(growable: false);
+    _pendingCommands.clear();
+    for (final command in pending) {
+      if (!command.completer.isCompleted) {
+        command.completer.complete(CommandOutcome.failed(reason));
+      }
+    }
   }
 
   void _setStatus(MqttConnectionStatus status) {
@@ -529,10 +516,17 @@ class MqttService {
     _reconnectTimer = null;
     final updates = _updatesSubscription;
     _updatesSubscription = null;
-    if (updates != null) await updates.cancel();
+    if (updates != null) {
+      updates.pause();
+      await updates.cancel();
+    }
     final client = _client;
     _client = null;
+    _failPendingCommands(
+      'Disconnected before Central acknowledged the command',
+    );
     client?.disconnect();
+    _availabilityController.add(CentralAvailability.unknown);
     _setStatus(MqttConnectionStatus.disconnected);
   }
 
@@ -546,12 +540,14 @@ class MqttService {
     if (updates != null) unawaited(updates.cancel());
     final client = _client;
     _client = null;
+    _failPendingCommands('MQTT service was closed');
     client?.disconnect();
     _statusController.close();
+    _availabilityController.close();
     _systemStateController.close();
     _topologyController.close();
     _loadsController.close();
     _alertController.close();
-    _installerNodesController.close();
+    _systemNodesController.close();
   }
 }

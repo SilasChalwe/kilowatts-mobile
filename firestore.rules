@@ -1,22 +1,79 @@
 rules_version = '2';
 
-// users/{email} holds the Kilowatts role (installer/homeowner) and
-// installationId that lib/features/auth/data/access_control_service.dart
-// reads to gate access. A signed-in account may only ever read its own
-// document; only an existing installer may read or write any document,
-// including granting the very first installer's own doc by hand in the
-// Firebase Console (console writes bypass these rules for project owners).
 service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{emailId} {
-      allow read: if request.auth != null && request.auth.token.email == emailId;
-      allow read, write: if isInstaller();
+  match /databases/{db}/documents {
+    match /users/{userId} {
+      allow read: if isInstaller(db) || isSelf(userId);
+      allow create: if isNewUnassignedProfile(userId);
+      allow update: if isInstaller(db) || isOwnProfileUpdate(userId);
+    }
+
+    match /installations/{installationId} {
+      allow read: if isInstaller(db) || isAssignedHomeowner(installationId, db);
+      allow create, update: if isInstaller(db);
+
+      match /settings/mqtt {
+        allow read: if isInstaller(db) || isAssignedHomeowner(installationId, db);
+        allow write: if isInstaller(db);
+      }
+
+      match /assets/{assetId} {
+        allow read: if isInstaller(db) || isAssignedHomeowner(installationId, db);
+        allow write: if isInstaller(db);
+      }
+
+      match /presence/{userId} {
+        allow read: if isInstaller(db) ||
+          (isSelf(userId) && isAssignedHomeowner(installationId, db));
+        allow create, update: if isSelf(userId) &&
+          isAssignedHomeowner(installationId, db) &&
+          request.resource.data.keys().hasOnly(['online', 'status', 'lastSeen']);
+      }
+    }
+
+    match /telemetry/{installationId}/history/{series} {
+      allow read, write: if isAssignedHomeowner(installationId, db);
     }
   }
 
-  function isInstaller() {
+  function isSelf(userId) {
+    return request.auth != null && request.auth.uid == userId;
+  }
+
+  function isInstaller(database) {
     return request.auth != null &&
-      exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
-      get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'installer';
+      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'installer';
+  }
+
+  function isNewUnassignedProfile(userId) {
+    return isSelf(userId) &&
+      request.resource.data.uid == request.auth.uid &&
+      request.resource.data.email == request.auth.token.email &&
+      request.resource.data.role == 'unassigned' &&
+      !request.resource.data.keys().hasAny(['installationId']);
+  }
+
+  function isOwnProfileUpdate(userId) {
+    return isSelf(userId) &&
+      request.resource.data.uid == request.auth.uid &&
+      request.resource.data.email == request.auth.token.email &&
+      request.resource.data.role == resource.data.role &&
+      request.resource.data.get('installationId', null) ==
+        resource.data.get('installationId', null) &&
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'uid',
+        'email',
+        'fullName',
+        'phoneNumber',
+        'updatedAt'
+      ]);
+  }
+
+  function isAssignedHomeowner(installationId, database) {
+    return request.auth != null &&
+      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'homeowner' &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.installationId == installationId;
   }
 }

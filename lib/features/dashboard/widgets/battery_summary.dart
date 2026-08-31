@@ -86,7 +86,9 @@ class BatterySummary extends StatelessWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        isLow ? 'Battery reserve is low' : 'Battery reserve is healthy',
+                        isLow
+                            ? 'Battery reserve is low'
+                            : 'Battery reserve is healthy',
                         style: AppTextStyles.caption.copyWith(color: accent),
                       ),
                     ),

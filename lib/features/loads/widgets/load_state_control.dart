@@ -80,13 +80,6 @@ class _LoadStateControlState extends State<LoadStateControl> {
                         isOn ? 'Requested ON' : 'Requested OFF',
                         style: AppTextStyles.label,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        load.confirmedStateValid && load.confirmedState != null
-                            ? 'Relay feedback: ${load.confirmedState! ? 'ON' : 'OFF'}'
-                            : 'Central accepted state is shown; downstream appliance feedback is not available.',
-                        style: AppTextStyles.caption,
-                      ),
                     ],
                   ),
                 ),
@@ -99,7 +92,9 @@ class _LoadStateControlState extends State<LoadStateControl> {
                 ? 'Waiting for Central…'
                 : (isOn ? 'Turn Off' : 'Turn On'),
             isLoading: _isSending,
-            onPressed: load.available && !_isSending ? () => _setState(!isOn) : null,
+            onPressed: load.available && !_isSending
+                ? () => _setState(!isOn)
+                : null,
           ),
           if (_message != null) ...[
             const SizedBox(height: AppSpacing.xs),
@@ -136,13 +131,13 @@ class _LoadStateControlState extends State<LoadStateControl> {
                   'Automatic · ${isOn ? 'Selected by Best-First Search' : 'Currently deferred'}',
                   style: AppTextStyles.label,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  !isOn && load.rejectionReason != null
-                      ? load.rejectionReason!.friendlyText
-                      : 'Priority, schedule and available power determine this load automatically.',
-                  style: AppTextStyles.caption,
-                ),
+                if (!isOn && load.rejectionReason != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    load.rejectionReason!.friendlyText,
+                    style: AppTextStyles.caption,
+                  ),
+                ],
               ],
             ),
           ),
@@ -168,13 +163,13 @@ class _CommandMessage extends StatelessWidget {
     final color = isError
         ? AppColors.error
         : isPending
-            ? AppColors.info
-            : AppColors.success;
+        ? AppColors.info
+        : AppColors.success;
     final icon = isError
         ? Icons.error_outline_rounded
         : isPending
-            ? Icons.sync_rounded
-            : Icons.check_circle_outline_rounded;
+        ? Icons.sync_rounded
+        : Icons.check_circle_outline_rounded;
 
     return Container(
       width: double.infinity,

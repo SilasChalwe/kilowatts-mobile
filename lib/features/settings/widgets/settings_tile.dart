@@ -62,7 +62,9 @@ class SettingsTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: AppTextStyles.bodyStrong.copyWith(color: titleColor),
+                      style: AppTextStyles.bodyStrong.copyWith(
+                        color: titleColor,
+                      ),
                     ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 2),

@@ -123,7 +123,9 @@ class SectionRow extends StatelessWidget {
                     textAlign: TextAlign.end,
                     softWrap: true,
                     style: AppTextStyles.bodyStrong.copyWith(
-                      color: muted ? AppColors.textSecondary : AppColors.textPrimary,
+                      color: muted
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
                     ),
                   ),
           ),

@@ -1,16 +1,15 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app_state/app_state.dart';
 import '../../../core/app_state/app_state_scope.dart';
-import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/kilowatts_logo.dart';
-import '../../admin/screens/installer_console_screen.dart';
-import '../../admin/screens/installer_operations_screen.dart';
-import '../../admin/screens/installer_users_screen.dart';
+import '../../alerts/models/alert_model.dart';
 import '../../alerts/screens/alerts_screen.dart';
+import '../../auth/data/access_control_service.dart';
 import '../../battery/screens/battery_power_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../history/screens/history_screen.dart';
@@ -19,9 +18,7 @@ import '../../settings/screens/settings_screen.dart';
 import '../../system/screens/system_topology_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key, this.installerMode = false});
-
-  final bool installerMode;
+  const MainShell({super.key});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -32,6 +29,8 @@ class _MainShellState extends State<MainShell> {
       GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
   bool _didRequestConnect = false;
+  bool _didRestoreDestination = false;
+  Future<InstallationAccess>? _profile;
 
   @override
   void didChangeDependencies() {
@@ -40,10 +39,27 @@ class _MainShellState extends State<MainShell> {
     _didRequestConnect = true;
 
     final appState = AppStateScope.of(context);
+    _profile ??= appState.resolveCurrentAccess();
+    if (!_didRestoreDestination) {
+      _didRestoreDestination = true;
+      _restoreDestination(appState);
+    }
     if (appState.connectionStatus.value == MqttConnectionStatus.disconnected ||
         appState.connectionStatus.value == MqttConnectionStatus.notConfigured) {
       appState.connectMqtt();
     }
+  }
+
+  Future<void> _restoreDestination(AppState appState) async {
+    final uid = appState.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final saved = prefs.getInt('kilowatts.destination.homeowner.$uid');
+    if (saved == null || saved < 0) return;
+    final destinationCount = _destinations().length;
+    if (saved >= destinationCount) return;
+    setState(() => _currentIndex = saved);
   }
 
   List<_ProductDestination> _destinations() {
@@ -52,185 +68,104 @@ class _MainShellState extends State<MainShell> {
         label: 'Overview',
         icon: Icons.home_outlined,
         selectedIcon: Icons.home_rounded,
-        page: DashboardScreen(
-          onViewAllAlerts: () => setState(() => _currentIndex = 3),
-        ),
+        page: const DashboardScreen(),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Loads',
         icon: Icons.bolt_outlined,
         selectedIcon: Icons.bolt_rounded,
-        page: LoadsScreen(),
+        page: const LoadsScreen(),
       ),
-      const _ProductDestination(
-        label: 'System topology',
+      _ProductDestination(
+        label: 'House topology',
         icon: Icons.account_tree_outlined,
         selectedIcon: Icons.account_tree_rounded,
-        page: SystemTopologyScreen(),
+        page: const SystemTopologyScreen(),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Alerts',
         icon: Icons.notifications_outlined,
         selectedIcon: Icons.notifications_rounded,
-        page: AlertsScreen(),
+        page: const AlertsScreen(),
+        showUnreadBadge: true,
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Battery & power',
         icon: Icons.battery_charging_full_outlined,
         selectedIcon: Icons.battery_charging_full_rounded,
-        page: BatteryPowerScreen(embedded: true),
+        page: const BatteryPowerScreen(embedded: true),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Reports',
         icon: Icons.insights_outlined,
         selectedIcon: Icons.insights_rounded,
-        page: HistoryScreen(embedded: true),
+        page: const HistoryScreen(embedded: true),
+        showLiveStatus: false,
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Settings',
         icon: Icons.settings_outlined,
         selectedIcon: Icons.settings_rounded,
-        page: SettingsScreen(embedded: true),
+        page: const SettingsScreen(embedded: true),
+        showLiveStatus: false,
       ),
-      if (widget.installerMode) ...[
-        const _ProductDestination(
-          label: 'Installer console',
-          icon: Icons.build_outlined,
-          selectedIcon: Icons.build_rounded,
-          page: InstallerConsoleScreen(embedded: true),
-          installerOnly: true,
-        ),
-        const _ProductDestination(
-          label: 'System operations',
-          icon: Icons.tune_outlined,
-          selectedIcon: Icons.tune_rounded,
-          page: InstallerOperationsScreen(embedded: true),
-          installerOnly: true,
-        ),
-        const _ProductDestination(
-          label: 'Users & access',
-          icon: Icons.group_outlined,
-          selectedIcon: Icons.group_rounded,
-          page: InstallerUsersScreen(embedded: true),
-          installerOnly: true,
-        ),
-      ],
     ];
   }
 
   void _selectDestination(int index, {bool closeDrawer = false}) {
     if (closeDrawer) Navigator.of(context).pop();
     setState(() => _currentIndex = index);
+    final uid = AppStateScope.of(context).currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setInt('kilowatts.destination.homeowner.$uid', index),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final destinations = _destinations();
     final safeIndex = _currentIndex < destinations.length ? _currentIndex : 0;
-    final currentTitle = destinations[safeIndex].label;
+    final current = destinations[safeIndex];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final usePersistentSidebar =
-            kIsWeb && constraints.maxWidth >= AppBreakpoints.desktop;
-
-        if (usePersistentSidebar) {
-          return Scaffold(
-            body: SafeArea(
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 264,
-                    child: _NavigationPanel(
-                      installerMode: widget.installerMode,
-                      destinations: destinations,
-                      selectedIndex: safeIndex,
-                      onSelect: _selectDestination,
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _DesktopUtilityBar(title: currentTitle),
-                        Expanded(
-                          child: IndexedStack(
-                            index: safeIndex,
-                            children:
-                                destinations.map((item) => item.page).toList(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return Scaffold(
-          key: _compactScaffoldKey,
-          appBar: AppBar(
-            backgroundColor: AppColors.surface,
-            leading: IconButton(
-              tooltip: 'Open navigation',
-              onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
-              icon: const Icon(Icons.menu_rounded),
-            ),
-            title: Text(currentTitle),
-            actions: const [
-              Padding(
-                padding: EdgeInsets.only(right: AppSpacing.sm),
-                child: _HeaderConnectionStatus(),
-              ),
-            ],
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(1),
-              child: Divider(height: 1),
-            ),
-          ),
-          drawer: Drawer(
-            width: 292,
-            backgroundColor: AppColors.sidebar,
-            child: SafeArea(
-              child: _NavigationPanel(
-                installerMode: widget.installerMode,
-                destinations: destinations,
-                selectedIndex: safeIndex,
-                onSelect: (index) =>
-                    _selectDestination(index, closeDrawer: true),
-              ),
-            ),
-          ),
-          body: IndexedStack(
-            index: safeIndex,
-            children: destinations.map((item) => item.page).toList(),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _DesktopUtilityBar extends StatelessWidget {
-  const _DesktopUtilityBar({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+    return Scaffold(
+      key: _compactScaffoldKey,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        leading: IconButton(
+          tooltip: 'Open navigation',
+          onPressed: () => _compactScaffoldKey.currentState?.openDrawer(),
+          icon: const Icon(Icons.menu_rounded),
+        ),
+        title: Text(current.label),
+        actions: current.showLiveStatus
+            ? const [
+                Padding(
+                  padding: EdgeInsets.only(right: AppSpacing.sm),
+                  child: _HeaderConnectionStatus(),
+                ),
+              ]
+            : null,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
       ),
-      child: Row(
-        children: [
-          Expanded(child: Text(title, style: AppTextStyles.title)),
-          const _HeaderConnectionStatus(),
-        ],
+      drawer: Drawer(
+        width: 292,
+        backgroundColor: AppColors.sidebar,
+        child: SafeArea(
+          child: _NavigationPanel(
+            destinations: destinations,
+            selectedIndex: safeIndex,
+            profile: _profile!,
+            onSelect: (index) => _selectDestination(index, closeDrawer: true),
+          ),
+        ),
+      ),
+      body: IndexedStack(
+        index: safeIndex,
+        children: destinations.map((item) => item.page).toList(),
       ),
     );
   }
@@ -242,22 +177,18 @@ class _HeaderConnectionStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-    return ValueListenableBuilder<MqttConnectionStatus>(
-      valueListenable: appState.connectionStatus,
-      builder: (context, status, _) {
-        final connected = status == MqttConnectionStatus.connected;
-        final busy = status == MqttConnectionStatus.connecting ||
-            status == MqttConnectionStatus.reconnecting;
-        final color = connected
-            ? AppColors.success
-            : busy
-                ? AppColors.warning
-                : AppColors.offline;
-        final label = connected
-            ? 'Online'
-            : busy
-                ? 'Connecting'
-                : 'Offline';
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        appState.connectionStatus,
+        appState.lastLiveSystemUpdate,
+      ]),
+      builder: (context, _) {
+        final live = appState.isSystemStateLive;
+        final color = live ? AppColors.success : AppColors.offline;
+        final label = live ? 'Online' : 'Offline';
+        final icon = live
+            ? Icons.cloud_done_outlined
+            : Icons.cloud_off_outlined;
 
         return Container(
           height: 34,
@@ -270,11 +201,7 @@ class _HeaderConnectionStatus extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
+              Icon(icon, size: 15, color: color),
               const SizedBox(width: 7),
               Text(label, style: AppTextStyles.caption),
             ],
@@ -291,34 +218,34 @@ class _ProductDestination {
     required this.icon,
     required this.selectedIcon,
     required this.page,
-    this.installerOnly = false,
+    this.showLiveStatus = true,
+    this.showUnreadBadge = false,
   });
 
   final String label;
   final IconData icon;
   final IconData selectedIcon;
   final Widget page;
-  final bool installerOnly;
+  final bool showLiveStatus;
+  final bool showUnreadBadge;
 }
 
 class _NavigationPanel extends StatelessWidget {
   const _NavigationPanel({
-    required this.installerMode,
     required this.destinations,
     required this.selectedIndex,
+    required this.profile,
     required this.onSelect,
   });
 
-  final bool installerMode;
   final List<_ProductDestination> destinations;
   final int selectedIndex;
+  final Future<InstallationAccess> profile;
   final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-    final firstInstaller = destinations.indexWhere((item) => item.installerOnly);
-
     return ColoredBox(
       color: AppColors.sidebar,
       child: Column(
@@ -354,79 +281,112 @@ class _NavigationPanel extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               children: [
-                for (var i = 0; i < destinations.length; i++) ...[
-                  if (i == firstInstaller && firstInstaller >= 0) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                      child: Text(
-                        'INSTALLATION',
-                        style: AppTextStyles.overline.copyWith(
-                          color: AppColors.sidebarTextMuted,
-                        ),
-                      ),
-                    ),
-                  ],
+                for (var i = 0; i < destinations.length; i++)
                   _SidebarDestination(
                     destination: destinations[i],
                     selected: selectedIndex == i,
                     onTap: () => onSelect(i),
                   ),
-                ],
               ],
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: AppColors.sidebarMuted,
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.primary,
-                    child: Icon(
-                      Icons.person_outline_rounded,
-                      size: 18,
-                      color: Colors.white,
-                    ),
+            child: FutureBuilder<InstallationAccess>(
+              future: profile,
+              builder: (context, snapshot) {
+                final profile = snapshot.data;
+                final email = appState.currentUser?.email;
+                final name = profile?.fullName?.trim();
+                final displayName = name?.isNotEmpty == true
+                    ? name!
+                    : email ?? 'Signed in';
+                final roleLabel = profile == null
+                    ? 'Homeowner'
+                    : _roleLabel(profile.role);
+
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.sidebarMuted,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          appState.currentUser?.displayName ??
-                              appState.currentUser?.email ??
-                              'Signed in',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.label.copyWith(
-                            color: AppColors.sidebarText,
-                          ),
-                        ),
-                        Text(
-                          installerMode ? 'Installer' : 'Homeowner',
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: AppColors.primary,
+                        child: Text(
+                          _initials(name, email),
                           style: AppTextStyles.caption.copyWith(
-                            color: AppColors.sidebarTextMuted,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.label.copyWith(
+                                color: AppColors.sidebarText,
+                              ),
+                            ),
+                            Text(
+                              roleLabel,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.sidebarTextMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Sign out',
+                        onPressed: appState.signOut,
+                        icon: const Icon(Icons.logout_rounded, size: 18),
+                        color: AppColors.sidebarTextMuted,
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
+  }
+
+  static String _roleLabel(KilowattsRole role) {
+    switch (role) {
+      case KilowattsRole.installer:
+        return 'Installer';
+      case KilowattsRole.homeowner:
+        return 'Homeowner';
+      case KilowattsRole.unassigned:
+        return 'Unassigned';
+    }
+  }
+
+  static String _initials(String? name, String? email) {
+    final source = name?.trim().isNotEmpty == true
+        ? name!.trim()
+        : email?.trim() ?? '';
+    if (source.isEmpty) return '?';
+    final parts = source
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
   }
 }
 
@@ -443,49 +403,62 @@ class _SidebarDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final foreground = selected
+        ? AppColors.sidebarText
+        : AppColors.sidebarTextMuted;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Material(
-        color: selected ? Colors.white.withValues(alpha: 0.10) : Colors.transparent,
+        color: selected ? AppColors.sidebarActive : Colors.transparent,
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          onTap: onTap,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          hoverColor: Colors.white.withValues(alpha: 0.06),
-          focusColor: Colors.white.withValues(alpha: 0.08),
+          onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 3,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: selected ? AppColors.primary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Icon(
                   selected ? destination.selectedIcon : destination.icon,
                   size: 20,
-                  color: selected
-                      ? AppColors.sidebarText
-                      : AppColors.sidebarTextMuted,
+                  color: foreground,
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     destination.label,
-                    style: AppTextStyles.body.copyWith(
-                      color: selected
-                          ? AppColors.sidebarText
-                          : AppColors.sidebarTextMuted,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                    style: AppTextStyles.label.copyWith(color: foreground),
                   ),
                 ),
+                if (destination.showUnreadBadge)
+                  ValueListenableBuilder<List<AlertModel>>(
+                    valueListenable: AppStateScope.of(context).alerts,
+                    builder: (context, alerts, _) {
+                      final unread = alerts
+                          .where((alert) => !alert.acknowledged)
+                          .length;
+                      if (unread == 0) return const SizedBox.shrink();
+                      return Container(
+                        constraints: const BoxConstraints(minWidth: 22),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected ? AppColors.primary : AppColors.error,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          unread > 99 ? '99+' : '$unread',
+                          style: AppTextStyles.caption.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),

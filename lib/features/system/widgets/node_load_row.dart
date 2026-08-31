@@ -4,35 +4,23 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
-import '../models/branch_model.dart';
+import '../../loads/models/load_model.dart';
 
-class BranchCard extends StatelessWidget {
-  const BranchCard({
-    required this.branch,
-    super.key,
-    this.loadName,
-    this.onTap,
-  });
+class NodeLoadRow extends StatelessWidget {
+  const NodeLoadRow({required this.load, super.key, this.onTap});
 
-  final BranchModel branch;
-  final String? loadName;
+  final LoadModel load;
   final VoidCallback? onTap;
-
-  Color get _statusColor {
-    switch (branch.status) {
-      case BranchStatus.healthy:
-        return AppColors.success;
-      case BranchStatus.warning:
-        return AppColors.warning;
-      case BranchStatus.fault:
-        return AppColors.error;
-      case BranchStatus.unknown:
-        return AppColors.textSecondary;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    final isOn = load.displayState == true;
+    final color = !load.available
+        ? AppColors.textSecondary
+        : isOn
+        ? AppColors.success
+        : AppColors.textSecondary;
+
     return Material(
       color: AppColors.surfaceMuted,
       borderRadius: BorderRadius.circular(10),
@@ -47,21 +35,23 @@ class BranchCard extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                Icons.electrical_services_outlined,
+                isOn
+                    ? Icons.flash_on_rounded
+                    : Icons.power_settings_new_rounded,
                 size: 16,
-                color: _statusColor,
+                color: color,
               ),
               const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Text(
-                  loadName ?? branch.name ?? 'Relay ${branch.relayPin}',
+                  load.name,
                   style: AppTextStyles.body,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Text(
-                '${Formatters.current(branch.estimatedCurrentA)} est.',
+                Formatters.power(load.ratedPowerW),
                 style: AppTextStyles.caption,
               ),
               if (onTap != null) ...[

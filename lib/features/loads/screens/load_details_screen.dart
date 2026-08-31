@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
@@ -27,6 +28,38 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
   bool _isSaving = false;
   String? _saveMessage;
   bool _saveFailed = false;
+  Future<void> _removeLoad(LoadModel load) async {
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Remove ${load.name}?',
+      message:
+          'This unregisters the load from ${load.owningNodeName ?? load.owningNodeMac}.',
+      confirmLabel: 'Remove',
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _isSaving = true;
+      _saveFailed = false;
+      _saveMessage = 'Removing load from Central…';
+    });
+
+    final outcome = await AppStateScope.of(
+      context,
+    ).removeLoad(nodeMac: load.owningNodeMac, relayPin: load.relayPin);
+
+    if (!mounted) return;
+    if (outcome.isConfirmed) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _isSaving = false;
+      _saveFailed = true;
+      _saveMessage = outcome.message ?? 'Central rejected this command.';
+    });
+  }
 
   Future<void> _editConfiguration(LoadModel load) async {
     final draft = await showLoadConfigurationDialog(context, load: load);
@@ -42,7 +75,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
       nodeMac: load.owningNodeMac,
       relayPin: load.relayPin,
       mode: draft.mode,
-      currentRequestedState: load.requestedState ?? load.confirmedState ?? false,
+      currentRequestedState: load.requestedState ?? false,
       priority: draft.priority,
       schedule: draft.mode == LoadMode.fixed
           ? LoadSchedule.disabled
@@ -66,7 +99,9 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     return ValueListenableBuilder<List<LoadModel>>(
       valueListenable: appState.loads,
       builder: (context, loads, _) {
-        final matches = loads.where((candidate) => candidate.id == widget.load.id);
+        final matches = loads.where(
+          (candidate) => candidate.id == widget.load.id,
+        );
         final load = matches.isEmpty ? widget.load : matches.first;
         final priorityLevel = LoadPriorityLevel.bucketFor(load.priority);
 
@@ -91,13 +126,13 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                             label: !load.available
                                 ? 'Unavailable'
                                 : load.displayState == true
-                                    ? 'On'
-                                    : 'Off',
+                                ? 'On'
+                                : 'Off',
                             tone: !load.available
                                 ? StatusTone.negative
                                 : load.displayState == true
-                                    ? StatusTone.positive
-                                    : StatusTone.neutral,
+                                ? StatusTone.positive
+                                : StatusTone.neutral,
                           ),
                         ],
                       ),
@@ -132,19 +167,39 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                                       : 'Not scheduled',
                                 ),
                                 const SizedBox(height: AppSpacing.sm),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: OutlinedButton.icon(
-                                    onPressed: _isSaving
-                                        ? null
-                                        : () => _editConfiguration(load),
-                                    icon: const Icon(Icons.edit_outlined, size: 18),
-                                    label: Text(
-                                      _isSaving
-                                          ? 'Applying…'
-                                          : 'Edit configuration',
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.xs,
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: _isSaving
+                                          ? null
+                                          : () => _removeLoad(load),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: AppColors.error,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Remove load'),
                                     ),
-                                  ),
+                                    OutlinedButton.icon(
+                                      onPressed: _isSaving
+                                          ? null
+                                          : () => _editConfiguration(load),
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        _isSaving
+                                            ? 'Applying…'
+                                            : 'Edit configuration',
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -158,7 +213,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                           children: [
                             SectionRow(
                               label: 'Rated power',
-                              value: Formatters.power(load.plannedPowerW),
+                              value: Formatters.power(load.ratedPowerW),
                             ),
                             SectionRow(
                               label: 'Power source',
@@ -224,13 +279,13 @@ class _SaveFeedback extends StatelessWidget {
     final color = failed
         ? AppColors.error
         : pending
-            ? AppColors.info
-            : AppColors.success;
+        ? AppColors.info
+        : AppColors.success;
     final background = failed
         ? AppColors.errorSoft
         : pending
-            ? AppColors.infoSoft
-            : AppColors.successSoft;
+        ? AppColors.infoSoft
+        : AppColors.successSoft;
 
     return Container(
       width: double.infinity,
@@ -246,8 +301,8 @@ class _SaveFeedback extends StatelessWidget {
             failed
                 ? Icons.error_outline_rounded
                 : pending
-                    ? Icons.sync_rounded
-                    : Icons.check_circle_outline_rounded,
+                ? Icons.sync_rounded
+                : Icons.check_circle_outline_rounded,
             size: 18,
             color: color,
           ),

@@ -26,11 +26,6 @@ class EmptyState extends StatelessWidget {
       width: double.infinity,
       constraints: BoxConstraints(maxWidth: compact ? 520 : 680),
       padding: EdgeInsets.all(compact ? AppSpacing.lg : AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -1,4 +1,5 @@
 import '../../../core/utils/json_parsing.dart';
+import '../../loads/models/load_model.dart';
 import 'node_diagnostics_model.dart';
 
 enum NodeRole {
@@ -22,7 +23,7 @@ class NodeModel {
     this.hopCount,
     this.nextHopMac,
     this.lastSeen,
-    this.branchIds = const [],
+    this.loads = const [],
     this.childNodeMacs = const [],
     this.diagnostics = const NodeDiagnosticsModel(),
     this.isNewlyDiscovered = false,
@@ -44,8 +45,10 @@ class NodeModel {
   /// last-seen timestamp field, only the derived `online` boolean.
   final DateTime? lastSeen;
 
-  /// Electrical branches physically wired to this node.
-  final List<String> branchIds;
+  /// Loads physically wired to this node's relays, parsed from this node's
+  /// own `loads` array in `state/tree` (the same Load shape `state/loads`
+  /// publishes flat, system-wide).
+  final List<LoadModel> loads;
 
   /// Communication children (ESP-NOW downstream hops) — distinct from
   /// electrical branches. A multi-hop Smart Node can relay for another
@@ -74,7 +77,7 @@ class NodeModel {
       hopCount: hopCount,
       nextHopMac: nextHopMac,
       lastSeen: lastSeen,
-      branchIds: branchIds,
+      loads: loads,
       childNodeMacs: childNodeMacs,
       diagnostics: diagnostics,
       isNewlyDiscovered: isNewlyDiscovered ?? this.isNewlyDiscovered,
@@ -82,7 +85,7 @@ class NodeModel {
   }
 
   /// Parses one node object from the recursive `state/tree` payload
-  /// (`TopologyTree::appendNodeAndChildren`/`buildTreeJson`'s `central`
+  /// (`TopologyTree::appendLoadsForNode`/`buildTreeJson`'s `central`
   /// object). [isCentral] is supplied by the caller walking the tree, since
   /// the wire shape encodes role by position/`type`, not a flat field this
   /// model can read in isolation.
@@ -90,7 +93,7 @@ class NodeModel {
     Map<String, dynamic> json, {
     required bool isCentral,
   }) {
-    final branchesJson = json.listOfMaps('branches');
+    final loadsJson = json.listOfMaps('loads');
     final childrenJson = json.listOfMaps('children');
     final diagnosticsJson = json['diagnostics'];
     return NodeModel(
@@ -100,10 +103,7 @@ class NodeModel {
       online: json.boolOrNull('online') ?? false,
       hopCount: json.intOrNull('hopCountToCentral'),
       nextHopMac: json.stringOrNull('parentMac'),
-      branchIds: [
-        for (final branch in branchesJson)
-          '${branch.stringOrNull('nodeMac') ?? json.stringOrNull('mac') ?? ''}:${branch.intOrNull('relayPin') ?? -1}',
-      ],
+      loads: loadsJson.map(LoadModel.fromJson).toList(),
       childNodeMacs: [
         for (final child in childrenJson) child.stringOrNull('mac') ?? '',
       ],

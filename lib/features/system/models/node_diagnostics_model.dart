@@ -1,8 +1,16 @@
 import '../../../core/utils/json_parsing.dart';
 
-/// Extended device diagnostics. Every field is optional — firmware only
-/// publishes what it actually measures, and the UI must show "Unavailable"
-/// rather than invent a value for anything missing here.
+/// Extended device diagnostics, matching `TopologyTree::appendDiagnosticsJson`
+/// exactly (`lib/NodeManager/Central/TopologyTree.cpp`). Every field is
+/// optional — firmware only publishes what it actually measures, and the UI
+/// must show "Unavailable" rather than invent a value for anything missing
+/// here.
+///
+/// [buildId], [siliconRevision], [cpuFrequencyMhz] and [chipTemperatureC]
+/// are not currently emitted by firmware's diagnostics JSON at all (it only
+/// sends firmwareVersion/chipModel/freeHeapBytes/minFreeHeapBytes/
+/// flashSizeBytes/psramSizeBytes/cpuCores/resetReason) — they stay null
+/// until a firmware change adds them, not because of a parsing bug.
 class NodeDiagnosticsModel {
   const NodeDiagnosticsModel({
     this.firmwareVersion,

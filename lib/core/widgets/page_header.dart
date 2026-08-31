@@ -85,11 +85,7 @@ class PageHeader extends StatelessWidget {
 
 /// Compact contextual status used next to page-level actions.
 class HeaderStatus extends StatelessWidget {
-  const HeaderStatus({
-    required this.label,
-    required this.color,
-    super.key,
-  });
+  const HeaderStatus({required this.label, required this.color, super.key});
 
   final String label;
   final Color color;

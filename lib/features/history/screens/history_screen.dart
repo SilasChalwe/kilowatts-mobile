@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/models/telemetry_point.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/responsive_content.dart';
@@ -43,10 +42,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return SegmentedButton<_HistoryRange>(
       segments: [
         for (final range in _HistoryRange.values)
-          ButtonSegment<_HistoryRange>(
-            value: range,
-            label: Text(range.label),
-          ),
+          ButtonSegment<_HistoryRange>(value: range, label: Text(range.label)),
       ],
       selected: {_range},
       showSelectedIcon: false,
@@ -81,12 +77,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     _rangeSelector(),
-                    Text(
-                      'Stored locally · rolling 7-day history',
-                      style: AppTextStyles.caption.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                    Text('Rolling 7-day history', style: AppTextStyles.caption),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -100,16 +91,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       unit: '%',
                       minimumY: 0,
                       maximumY: 100,
-                      caption:
-                          'Battery reserve over ${_range.label}. The newest reading is highlighted.',
                     ),
                     TrendChartCard(
                       title: 'Active load power',
                       points: activePower,
                       unit: 'W',
                       minimumY: 0,
-                      caption:
-                          'Fixed ON + selected automatic load power over ${_range.label}.',
                     ),
                   ],
                 ),

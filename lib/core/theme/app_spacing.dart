@@ -22,7 +22,6 @@ abstract final class AppRadius {
 }
 
 abstract final class AppBreakpoints {
-  static const double compactWeb = 840;
   static const double desktop = 1024;
   static const double wide = 1280;
   static const double ultraWide = 1540;

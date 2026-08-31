@@ -7,29 +7,29 @@ import 'package:flutter/material.dart';
 ///   they are used.
 /// - Semantic colours reinforce meaning but never carry meaning by themselves;
 ///   status UI must also use text, icons, labels or shape.
-/// - Teal is reserved for product actions, focus and selection rather than
-///   being reused as generic status decoration.
+/// - Blue is used for product actions, focus and selection; semantic colors
+///   are reserved for actual status meaning.
 abstract final class AppColors {
-  static const Color background = Color(0xFFF4F7F7);
+  static const Color background = Color(0xFFF3F7FC);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceRaised = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFEEF3F3);
-  static const Color surfaceAccent = Color(0xFFE7F3F4);
+  static const Color surfaceMuted = Color(0xFFE8F0FA);
+  static const Color surfaceAccent = Color(0xFFE5EFFB);
 
   static const Color textPrimary = Color(0xFF102124);
   static const Color textSecondary = Color(0xFF5E6D70);
   static const Color textTertiary = Color(0xFF6A777A);
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
-  static const Color primary = Color(0xFF0F6F78);
-  static const Color primaryHover = Color(0xFF0B6068);
-  static const Color primaryPressed = Color(0xFF084E55);
-  static const Color primarySoft = Color(0xFFE5F2F3);
+  static const Color primary = Color(0xFF245BA6);
+  static const Color primaryHover = Color(0xFF1B4A8C);
+  static const Color primaryPressed = Color(0xFF143A70);
+  static const Color primarySoft = Color(0xFFE4EEFC);
 
   static const Color border = Color(0xFFDCE4E5);
   static const Color borderStrong = Color(0xFFC5D1D3);
   static const Color fieldFill = Color(0xFFFFFFFF);
-  static const Color focus = Color(0xFF2A7F88);
+  static const Color focus = Color(0xFF3D73BC);
 
   static const Color success = Color(0xFF24734D);
   static const Color successSoft = Color(0xFFEAF5EF);
@@ -41,8 +41,9 @@ abstract final class AppColors {
   static const Color infoSoft = Color(0xFFEDF3FB);
   static const Color offline = Color(0xFF667579);
 
-  static const Color sidebar = Color(0xFF102124);
-  static const Color sidebarMuted = Color(0xFF1A3034);
-  static const Color sidebarText = Color(0xFFF6FAFA);
-  static const Color sidebarTextMuted = Color(0xFFAFC0C3);
+  static const Color sidebar = Color(0xFFFFFFFF);
+  static const Color sidebarMuted = Color(0xFFEAF1FA);
+  static const Color sidebarActive = Color(0xFFDCEAFB);
+  static const Color sidebarText = Color(0xFF1F292D);
+  static const Color sidebarTextMuted = Color(0xFF5E6D70);
 }

@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'core/app_state/app_state.dart';
 import 'core/services/local_state_service.dart';
+import 'core/services/mqtt_cloud_config_store.dart';
+import 'core/services/mqtt_presence_store.dart';
 import 'core/services/mqtt_service.dart';
+import 'core/services/telemetry_history_store.dart';
 import 'features/auth/data/auth_service.dart';
 import 'firebase_options.dart';
 
@@ -17,11 +20,15 @@ Future<void> main() async {
     );
 
     final localStateService = LocalStateService();
+    final authService = AuthService();
 
     final appState = AppState(
-      authService: AuthService(),
+      authService: authService,
       mqttService: MqttService(cache: localStateService),
       localStateService: localStateService,
+      mqttCloudConfigStore: MqttCloudConfigStore(),
+      mqttPresenceStore: MqttPresenceStore(),
+      telemetryHistoryStore: TelemetryHistoryStore(),
     );
 
     runApp(KilowattsApp(appState: appState));

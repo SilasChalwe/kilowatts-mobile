@@ -1,5 +1,5 @@
 name: kilowatts_mobile
-description: "Kilowatts solar energy monitoring, load management and installer operations application."
+description: "Kilowatts mobile energy monitoring, homeowner control, and installation handover application."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -16,7 +16,6 @@ dependencies:
   cloud_firestore: ^6.8.0
   shared_preferences: ^2.5.3
   mqtt_client: ^10.9.1
-  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:
@@ -39,7 +38,6 @@ flutter_native_splash:
   image: assets/branding/kilowatts_logo_transparent.png
   android: true
   ios: false
-  web: false
   android_12:
     color: "#ffffff"
     image: assets/branding/kilowatts_logo_safe_zone.png

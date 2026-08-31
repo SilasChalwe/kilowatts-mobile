@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../models/load_model.dart';
@@ -94,20 +93,6 @@ class _LoadConfigurationDialogState extends State<_LoadConfigurationDialog> {
                 ScheduleEditor(
                   schedule: _schedule,
                   onChanged: (value) => setState(() => _schedule = value),
-                ),
-              ] else ...[
-                const SizedBox(height: AppSpacing.lg),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceMuted,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: const Text(
-                    'Fixed loads use manual ON/OFF control. Automatic scheduling is disabled.',
-                    style: AppTextStyles.caption,
-                  ),
                 ),
               ],
             ],

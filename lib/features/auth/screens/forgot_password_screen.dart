@@ -91,11 +91,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: const Icon(Icons.lock_reset_rounded, size: 44),
             ),
             const SizedBox(height: AppSpacing.lg),
-            const AuthHeader(
-              title: 'Forgot Password?',
-              subtitle:
-                  'Enter your email and we will send password reset instructions.',
-            ),
+            const AuthHeader(title: 'Forgot Password?'),
             const SizedBox(height: AppSpacing.xl),
             if (_errorMessage != null) ...[
               InlineMessage(message: _errorMessage!, isError: true),
