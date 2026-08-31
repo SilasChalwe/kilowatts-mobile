@@ -7,37 +7,46 @@ class InstallationAccess {
   const InstallationAccess({
     required this.role,
     this.uid,
-    this.installationId,
     this.fullName,
     this.phoneNumber,
   });
 
   final KilowattsRole role;
   final String? uid;
-  final String? installationId;
   final String? fullName;
   final String? phoneNumber;
 
-  bool get hasInstallation =>
-      installationId != null && installationId!.isNotEmpty;
+  /// A homeowner's installation is identified by their own Firebase Auth
+  /// UID — there is no separately generated installation ID.
+  String? get installationId =>
+      role == KilowattsRole.homeowner && uid != null && uid!.isNotEmpty
+      ? uid
+      : null;
+
+  bool get hasInstallation => installationId != null;
 }
 
 class KilowattsUserAccess {
   const KilowattsUserAccess({
-    required this.uid,
+    this.uid,
     required this.email,
     required this.role,
-    this.installationId,
     this.fullName,
     this.phoneNumber,
   });
 
-  final String uid;
+  /// Null until the account has signed in at least once (profile docs
+  /// created by hand in the Firebase Console won't have this field yet).
+  final String? uid;
   final String email;
   final KilowattsRole role;
-  final String? installationId;
   final String? fullName;
   final String? phoneNumber;
+
+  String? get installationId =>
+      role == KilowattsRole.homeowner && uid != null && uid!.isNotEmpty
+      ? uid
+      : null;
 
   String get displayName {
     final name = fullName?.trim() ?? '';
@@ -58,29 +67,16 @@ class KilowattsUserAccess {
   String get roleLabel => switch (role) {
     KilowattsRole.installer => 'Installer',
     KilowattsRole.homeowner => 'Homeowner',
-    KilowattsRole.unassigned => 'Awaiting handover',
+    KilowattsRole.unassigned => 'Unassigned',
   };
-}
-
-class InstallationAsset {
-  const InstallationAsset({
-    required this.id,
-    required this.deviceId,
-    required this.name,
-    required this.type,
-  });
-
-  final String id;
-  final String deviceId;
-  final String name;
-  final String type;
 }
 
 /// Firestore authorization and commissioning boundary.
 ///
-/// Profiles are keyed by Firebase Auth UID. A homeowner points to a separate
-/// installation; MQTT, assets, presence and telemetry belong to that
-/// installation rather than to a person.
+/// Profiles are keyed by the account's lowercased email address. A
+/// homeowner's installation is identified by their own Firebase Auth UID
+/// rather than a separately generated ID; MQTT, assets, presence and
+/// telemetry belong to that installation. See docs/firestore-schema.md.
 class AccessControlService {
   AccessControlService({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -104,36 +100,39 @@ class AccessControlService {
     return text.isEmpty ? null : text;
   }
 
+  static String _userDocId(String email) => email.trim().toLowerCase();
+
   static InstallationAccess _accessFromData(
-    String uid,
+    String? uid,
     Map<String, dynamic>? data,
   ) {
     final values = data ?? const <String, dynamic>{};
     return InstallationAccess(
       role: _parseRole(values['role']),
       uid: uid,
-      installationId: _optionalString(values['installationId']),
       fullName: _optionalString(values['fullName']),
       phoneNumber: _optionalString(values['phoneNumber']),
     );
   }
 
   Future<InstallationAccess> resolve(User? user) async {
-    if (user == null) {
-      return const InstallationAccess(role: KilowattsRole.unassigned);
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
+      return InstallationAccess(role: KilowattsRole.unassigned, uid: user?.uid);
     }
-    final snapshot = await _users.doc(user.uid).get();
+    final snapshot = await _users.doc(_userDocId(email)).get();
     return _accessFromData(user.uid, snapshot.data());
   }
 
   Stream<InstallationAccess> watchCurrent(User? user) {
-    if (user == null) {
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
       return Stream.value(
-        const InstallationAccess(role: KilowattsRole.unassigned),
+        InstallationAccess(role: KilowattsRole.unassigned, uid: user?.uid),
       );
     }
     return _users
-        .doc(user.uid)
+        .doc(_userDocId(email))
         .snapshots()
         .map((snapshot) => _accessFromData(user.uid, snapshot.data()));
   }
@@ -143,10 +142,9 @@ class AccessControlService {
       final users = snapshot.docs.map((doc) {
         final data = doc.data();
         return KilowattsUserAccess(
-          uid: doc.id,
-          email: _optionalString(data['email']) ?? 'Unknown account',
+          uid: _optionalString(data['uid']),
+          email: _optionalString(data['email']) ?? doc.id,
           role: _parseRole(data['role']),
-          installationId: _optionalString(data['installationId']),
           fullName: _optionalString(data['fullName']),
           phoneNumber: _optionalString(data['phoneNumber']),
         );
@@ -159,115 +157,52 @@ class AccessControlService {
     });
   }
 
-  /// Creates or updates an installation and completes homeowner handover in
-  /// one transaction. Firestore generates the installation ID independently
-  /// of the homeowner UID.
-  Future<String> assignHomeowner({
+  /// Sets a user's role. Promoting to [KilowattsRole.homeowner] ensures
+  /// their `installations/{uid}` doc exists and is active; moving a
+  /// homeowner to any other role marks their installation unassigned.
+  /// A homeowner's own name/phone number stay theirs to edit — this only
+  /// ever touches `role` (plus `uid`, to self-heal a hand-authored doc).
+  Future<void> setRole({
+    required String email,
     required String uid,
-    required String installationName,
+    required KilowattsRole role,
   }) async {
+    final normalizedEmail = _userDocId(email);
     final normalizedUid = uid.trim();
-    final normalizedName = installationName.trim();
+    if (!normalizedEmail.contains('@')) {
+      throw ArgumentError('A valid account email is required.');
+    }
     if (normalizedUid.isEmpty) {
       throw ArgumentError('A registered user is required.');
     }
-    if (normalizedName.length < 2) {
-      throw ArgumentError('An installation name is required.');
-    }
 
-    final userRef = _users.doc(normalizedUid);
-    final newInstallationRef = _installations.doc();
-    return _firestore.runTransaction((transaction) async {
+    final userRef = _users.doc(normalizedEmail);
+    final installationRef = _installations.doc(normalizedUid);
+    await _firestore.runTransaction((transaction) async {
       final user = await transaction.get(userRef);
       if (!user.exists) {
         throw StateError('The user account no longer exists.');
       }
-      final existingId = _optionalString(user.data()?['installationId']);
-      final installationRef = existingId == null
-          ? newInstallationRef
-          : _installations.doc(existingId);
-      transaction.set(installationRef, {
-        'name': normalizedName,
-        'ownerUid': normalizedUid,
-        'status': 'active',
-        if (existingId == null) 'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      transaction.update(userRef, {
-        'role': 'homeowner',
-        'installationId': installationRef.id,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      return installationRef.id;
-    });
-  }
-
-  Future<void> revokeAccess(String uid) async {
-    final userRef = _users.doc(uid.trim());
-    await _firestore.runTransaction((transaction) async {
-      final user = await transaction.get(userRef);
-      if (!user.exists) return;
-      final installationId = _optionalString(user.data()?['installationId']);
-      if (installationId != null) {
-        transaction.set(_installations.doc(installationId), {
+      final wasHomeowner = user.data()?['role'] == 'homeowner';
+      if (role == KilowattsRole.homeowner) {
+        final installation = await transaction.get(installationRef);
+        transaction.set(installationRef, {
+          'ownerUid': normalizedUid,
+          'status': 'active',
+          if (!installation.exists) 'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } else if (wasHomeowner) {
+        transaction.set(installationRef, {
           'status': 'unassigned',
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
       transaction.update(userRef, {
-        'role': 'unassigned',
-        'installationId': FieldValue.delete(),
+        'role': role.name,
+        'uid': normalizedUid,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
   }
-
-  Stream<List<InstallationAsset>> watchAssets(String installationId) {
-    return _installations
-        .doc(installationId)
-        .collection('assets')
-        .orderBy('name')
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => InstallationAsset(
-                  id: doc.id,
-                  deviceId: doc.data()['deviceId']?.toString() ?? '',
-                  name: doc.data()['name']?.toString() ?? '',
-                  type: doc.data()['type']?.toString() ?? 'controller',
-                ),
-              )
-              .toList(growable: false),
-        );
-  }
-
-  Future<void> addAsset({
-    required String installationId,
-    required String deviceId,
-    required String name,
-    required String type,
-  }) async {
-    final normalizedDeviceId = deviceId.trim();
-    final normalizedName = name.trim();
-    if (normalizedDeviceId.isEmpty || normalizedName.isEmpty) {
-      throw ArgumentError('Asset name and device ID are required.');
-    }
-    await _installations.doc(installationId).collection('assets').add({
-      'deviceId': normalizedDeviceId,
-      'name': normalizedName,
-      'type': type.trim().toLowerCase(),
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  Future<void> removeAsset({
-    required String installationId,
-    required String assetId,
-  }) => _installations
-      .doc(installationId)
-      .collection('assets')
-      .doc(assetId)
-      .delete();
 }

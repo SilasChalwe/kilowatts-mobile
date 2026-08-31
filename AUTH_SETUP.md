@@ -1,28 +1,28 @@
 # Kilowatts Authentication and Access
 
-Kilowatts uses Firebase Email/Password authentication and UID-keyed Firestore
-profiles.
+Kilowatts uses Firebase Email/Password authentication and email-keyed
+Firestore profiles. See [docs/firestore-schema.md](docs/firestore-schema.md)
+for the full data model — this file only covers setup steps.
 
 ## Account lifecycle
 
 ```text
 Register and verify email
         ↓
-users/{uid} with role = unassigned
+users/{email} with role = unassigned
         ↓
 Installer starts handover
         ↓
-Firestore generates installations/{installationId}
+installations/{uid} created, uid = the homeowner's own Firebase Auth UID
         ↓
-users/{uid}.installationId = installationId
-users/{uid}.role = homeowner
+users/{email}.role = homeowner
         ↓
 Homeowner application opens
 ```
 
 The first installer must be bootstrapped in Firebase Console by setting the
-UID-keyed profile's `role` to `installer`. Installer accounts never receive an
-`installationId` and only open the commissioning page.
+email-keyed profile's `role` to `installer`. Installer accounts don't have an
+installation and only open the commissioning page.
 
 ## Firebase Console
 
@@ -30,8 +30,8 @@ UID-keyed profile's `role` to `installer`. Installer accounts never receive an
 2. Configure and brand verification and password-reset emails.
 3. Deploy [firestore.rules](firestore.rules).
 4. Create the first installer account through normal registration.
-5. Change `users/{installerUid}.role` from `unassigned` to `installer` in the
-   Firebase Console.
+5. Change `users/{installer-email}.role` from `unassigned` to `installer` in
+   the Firebase Console.
 
 ## Security decisions
 

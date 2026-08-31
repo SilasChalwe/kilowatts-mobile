@@ -46,7 +46,7 @@ class AuthService {
   Future<void> _ensureProfile(User user, {String? fullName}) async {
     final email = user.email?.trim();
     if (email == null || email.isEmpty) return;
-    final profile = firestore.collection('users').doc(user.uid);
+    final profile = firestore.collection('users').doc(email.toLowerCase());
     final existing = await profile.get();
     await profile.set({
       'uid': user.uid,

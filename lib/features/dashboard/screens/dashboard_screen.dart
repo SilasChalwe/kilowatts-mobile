@@ -18,14 +18,23 @@ class DashboardScreen extends StatelessWidget {
     final appState = AppStateScope.of(context);
 
     return AnimatedBuilder(
-      animation: Listenable.merge([appState.systemState, appState.loads]),
+      animation: Listenable.merge([
+        appState.systemState,
+        appState.loads,
+        appState.connectionStatus,
+        appState.centralAvailability,
+        appState.lastLiveSystemUpdate,
+      ]),
       builder: (context, _) {
         final state = appState.systemState.value ?? SystemStateModel.empty;
-        final loads = appState.loads.value;
+        final isLive = appState.isSystemStateLive;
+        final loads = isLive ? appState.loads.value : const [];
         final activeLoads = loads
             .where((load) => load.displayState == true)
             .length;
-        final soc = state.batterySocPercent;
+        final soc = isLive ? state.batterySocPercent : null;
+        final loadPowerW = isLive ? state.estimatedTotalLoadPowerW : null;
+        final remainingPowerW = isLive ? state.remainingPowerW : null;
         final lowReserve =
             soc != null && soc <= AppConstants.defaultLowBatteryWarningPercent;
         final isDevelopment = state.operatingEnvironment == 'DEVELOPMENT';
@@ -58,12 +67,12 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       MetricCard(
                         label: 'Active load power',
-                        value: Formatters.power(state.estimatedTotalLoadPowerW),
+                        value: Formatters.power(loadPowerW),
                         icon: Icons.electric_meter_outlined,
                       ),
                       MetricCard(
                         label: 'Remaining power',
-                        value: Formatters.power(state.remainingPowerW),
+                        value: Formatters.power(remainingPowerW),
                         icon: Icons.battery_saver_outlined,
                       ),
                       MetricCard(

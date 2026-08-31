@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/responsive_content.dart';
-import '../../system/models/system_state_model.dart';
 import '../widgets/battery_reserve_card.dart';
 import '../widgets/power_budget_card.dart';
 import '../widgets/soc_indicator.dart';
@@ -16,15 +15,22 @@ class BatteryPowerScreen extends StatelessWidget {
   Widget _content(BuildContext context) {
     final appState = AppStateScope.of(context);
 
-    return ValueListenableBuilder<SystemStateModel?>(
-      valueListenable: appState.systemState,
-      builder: (context, state, _) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        appState.systemState,
+        appState.connectionStatus,
+        appState.centralAvailability,
+        appState.lastLiveSystemUpdate,
+      ]),
+      builder: (context, _) {
+        final state = appState.systemState.value;
         if (state == null) {
           return ErrorState(
             title: 'Battery data unavailable',
             onRetry: appState.connectMqtt,
           );
         }
+        final isLive = appState.isSystemStateLive;
 
         return SingleChildScrollView(
           child: ResponsiveContent(
@@ -33,9 +39,9 @@ class BatteryPowerScreen extends StatelessWidget {
               minCardWidth: 300,
               maxColumns: 1,
               children: [
-                SocIndicator(state: state),
+                SocIndicator(state: state, isLive: isLive),
                 BatteryReserveCard(state: state),
-                PowerBudgetCard(state: state),
+                PowerBudgetCard(state: state, isLive: isLive),
               ],
             ),
           ),

@@ -6,8 +6,9 @@ Kilowatts is a mobile-only Flutter application with role-based entry:
 - Installers receive one commissioning screen for homeowner handover, MQTT,
   and device-asset assignment.
 
-Each physical installation has a Firestore-generated installation ID. User
-UIDs identify people only and are never used as installation identifiers.
+Each homeowner's installation is identified by their own Firebase Auth UID,
+and user profiles are keyed by email. See
+[docs/firestore-schema.md](docs/firestore-schema.md) for the full schema.
 
 Release builds must use a private Android upload key. Copy
 `android/key.properties.example` to `android/key.properties`, set the real

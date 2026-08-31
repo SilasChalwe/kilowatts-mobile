@@ -8,7 +8,6 @@ import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../models/load_model.dart';
 import '../widgets/load_card.dart';
-import '../widgets/load_creation_dialog.dart';
 import 'load_details_screen.dart';
 
 class LoadsScreen extends StatefulWidget {
@@ -54,48 +53,6 @@ class _LoadsScreenState extends State<LoadsScreen> {
     ).push(MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)));
   }
 
-  Future<void> _addLoad(List<LoadModel> loads) async {
-    final appState = AppStateScope.of(context);
-    final nodes = appState.systemNodes.value
-        .where(
-          (node) =>
-              node.isSmartNode &&
-              node.isCommissioned &&
-              node.availableRelayPins.any(
-                (pin) => !loads.any(
-                  (load) =>
-                      load.owningNodeMac == node.mac && load.relayPin == pin,
-                ),
-              ),
-        )
-        .toList(growable: false);
-    if (nodes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No commissioned node has a free relay channel.'),
-        ),
-      );
-      return;
-    }
-    final configuration = await showLoadCreationDialog(
-      context,
-      nodes: nodes,
-      existingLoads: loads,
-    );
-    if (configuration == null || !mounted) return;
-    final outcome = await appState.configureLoad(configuration);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          outcome.isConfirmed
-              ? 'Load added.'
-              : outcome.message ?? 'Central rejected the load.',
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
@@ -113,61 +70,29 @@ class _LoadsScreenState extends State<LoadsScreen> {
                 children: [
                   SectionCard(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final horizontal = constraints.maxWidth >= 760;
-                        final search = SizedBox(
-                          width: horizontal ? 360 : double.infinity,
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (_) => setState(() {}),
-                            decoration: InputDecoration(
-                              hintText: 'Search loads or nodes',
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                size: 20,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'Search loads or nodes',
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 20,
+                        ),
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear search',
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {});
+                                },
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 19,
+                                ),
                               ),
-                              suffixIcon: _searchController.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: 'Clear search',
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        setState(() {});
-                                      },
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        size: 19,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        );
-
-                        final addButton = FilledButton.icon(
-                          onPressed: () => _addLoad(loads),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Add load'),
-                        );
-
-                        if (!horizontal) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              search,
-                              const SizedBox(height: AppSpacing.sm),
-                              SizedBox(
-                                width: double.infinity,
-                                child: addButton,
-                              ),
-                            ],
-                          );
-                        }
-
-                        return Row(
-                          children: [search, const Spacer(), addButton],
-                        );
-                      },
+                      ),
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),

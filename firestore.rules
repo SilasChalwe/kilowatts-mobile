@@ -2,12 +2,14 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{db}/documents {
+    // users/{email} — doc ID is the account's lowercased, trimmed email.
     match /users/{userId} {
-      allow read: if isInstaller(db) || isSelf(userId);
+      allow read: if isInstaller(db) || isOwnProfile(userId);
       allow create: if isNewUnassignedProfile(userId);
       allow update: if isInstaller(db) || isOwnProfileUpdate(userId);
     }
 
+    // installations/{uid} — doc ID is the homeowner's own Firebase Auth UID.
     match /installations/{installationId} {
       allow read: if isInstaller(db) || isAssignedHomeowner(installationId, db);
       allow create, update: if isInstaller(db);
@@ -22,10 +24,12 @@ service cloud.firestore {
         allow write: if isInstaller(db);
       }
 
-      match /presence/{userId} {
+      // presence/{presenceUid} — a Firebase Auth UID, NOT an email. A
+      // different identity space from users/{email} above.
+      match /presence/{presenceUid} {
         allow read: if isInstaller(db) ||
-          (isSelf(userId) && isAssignedHomeowner(installationId, db));
-        allow create, update: if isSelf(userId) &&
+          (isOwnUid(presenceUid) && isAssignedHomeowner(installationId, db));
+        allow create, update: if isOwnUid(presenceUid) &&
           isAssignedHomeowner(installationId, db) &&
           request.resource.data.keys().hasOnly(['online', 'status', 'lastSeen']);
       }
@@ -36,18 +40,23 @@ service cloud.firestore {
     }
   }
 
-  function isSelf(userId) {
-    return request.auth != null && request.auth.uid == userId;
+  // ---- users/{email} identity ----
+
+  function isOwnProfile(userId) {
+    return request.auth != null &&
+      request.auth.token.email != null &&
+      request.auth.token.email.lower() == userId;
   }
 
   function isInstaller(database) {
     return request.auth != null &&
-      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'installer';
+      request.auth.token.email != null &&
+      exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) &&
+      get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'installer';
   }
 
   function isNewUnassignedProfile(userId) {
-    return isSelf(userId) &&
+    return isOwnProfile(userId) &&
       request.resource.data.uid == request.auth.uid &&
       request.resource.data.email == request.auth.token.email &&
       request.resource.data.role == 'unassigned' &&
@@ -55,25 +64,24 @@ service cloud.firestore {
   }
 
   function isOwnProfileUpdate(userId) {
-    return isSelf(userId) &&
+    return isOwnProfile(userId) &&
       request.resource.data.uid == request.auth.uid &&
       request.resource.data.email == request.auth.token.email &&
       request.resource.data.role == resource.data.role &&
-      request.resource.data.get('installationId', null) ==
-        resource.data.get('installationId', null) &&
-      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'uid',
-        'email',
-        'fullName',
-        'phoneNumber',
-        'updatedAt'
-      ]);
+      request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['uid', 'email', 'fullName', 'phoneNumber', 'updatedAt']);
+  }
+
+  // ---- installations/{uid} identity ----
+
+  function isOwnUid(uid) {
+    return request.auth != null && request.auth.uid == uid;
   }
 
   function isAssignedHomeowner(installationId, database) {
-    return request.auth != null &&
-      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'homeowner' &&
-      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.installationId == installationId;
+    return isOwnUid(installationId) &&
+      request.auth.token.email != null &&
+      exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) &&
+      get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'homeowner';
   }
 }

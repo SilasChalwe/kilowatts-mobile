@@ -16,50 +16,32 @@ import '../widgets/mqtt_configuration_dialog.dart';
 class InstallerCommissioningScreen extends StatelessWidget {
   const InstallerCommissioningScreen({super.key});
 
-  Future<void> _handover(BuildContext context, KilowattsUserAccess user) async {
-    final controller = TextEditingController(
-      text: user.installationId == null ? '${user.displayName} home' : '',
-    );
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          user.installationId == null
-              ? 'Start homeowner handover'
-              : 'Update installation',
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(labelText: 'Installation name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.length >= 2) Navigator.of(dialogContext).pop(value);
-            },
-            child: const Text('Assign homeowner'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (name == null || !context.mounted) return;
-    try {
-      final installationId = await AppStateScope.of(
+  Future<void> _assignRole(
+    BuildContext context,
+    KilowattsUserAccess user,
+  ) async {
+    final uid = user.uid;
+    if (uid == null) {
+      _message(
         context,
-      ).assignHomeowner(uid: user.uid, installationName: name);
-      if (!context.mounted) return;
-      _message(context, 'Handover ready. Installation: $installationId');
+        'This account has not signed in yet. Ask them to sign in, then retry.',
+        true,
+      );
+      return;
+    }
+    final role = await showDialog<KilowattsRole>(
+      context: context,
+      builder: (dialogContext) => _RoleDialog(initialRole: user.role),
+    );
+    if (role == null || role == user.role || !context.mounted) return;
+    try {
+      await AppStateScope.of(
+        context,
+      ).setUserRole(email: user.email, uid: uid, role: role);
+      if (context.mounted) _message(context, 'Role updated.');
     } catch (_) {
       if (context.mounted) {
-        _message(context, 'Could not assign homeowner.', true);
+        _message(context, 'Could not update role.', true);
       }
     }
   }
@@ -116,7 +98,13 @@ class InstallerCommissioningScreen extends StatelessWidget {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    await AppStateScope.of(context).revokeAccess(user.uid);
+    final uid = user.uid;
+    if (uid == null) return;
+    await AppStateScope.of(context).setUserRole(
+      email: user.email,
+      uid: uid,
+      role: KilowattsRole.unassigned,
+    );
   }
 
   static void _message(
@@ -137,7 +125,7 @@ class InstallerCommissioningScreen extends StatelessWidget {
     final appState = AppStateScope.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Installer commissioning'),
+        title: const Text('Installer'),
         actions: [
           IconButton(
             tooltip: 'Sign out',
@@ -167,45 +155,32 @@ class InstallerCommissioningScreen extends StatelessWidget {
               children: [
                 ResponsiveContent(
                   maxWidth: 920,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Homeowner handover', style: AppTextStyles.title),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        'Assign an account, MQTT connection and physical device assets. All system operation happens in the homeowner app.',
-                        style: AppTextStyles.body.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      if (users.isEmpty)
-                        const EmptyState(
+                  child: users.isEmpty
+                      ? const EmptyState(
                           icon: Icons.person_add_alt_1_outlined,
                           title: 'No homeowner accounts',
                           message:
                               'The homeowner must register and verify an account before handover.',
                         )
-                      else
-                        for (final user in users) ...[
-                          _HandoverCard(
-                            user: user,
-                            onHandover: () => _handover(context, user),
-                            onMqtt: () => _configureMqtt(context, user),
-                            onAssets: user.installationId == null
-                                ? null
-                                : () => showDialog<void>(
-                                    context: context,
-                                    builder: (_) => _AssetsDialog(
-                                      installationId: user.installationId!,
-                                    ),
-                                  ),
-                            onRevoke: () => _revoke(context, user),
+                      : SectionCard(
+                          padding: EdgeInsets.zero,
+                          child: Column(
+                            children: [
+                              for (var i = 0; i < users.length; i++) ...[
+                                _UserListTile(
+                                  key: ValueKey(users[i].uid ?? users[i].email),
+                                  user: users[i],
+                                  onAssignRole: () =>
+                                      _assignRole(context, users[i]),
+                                  onMqtt: () =>
+                                      _configureMqtt(context, users[i]),
+                                  onRevoke: () => _revoke(context, users[i]),
+                                ),
+                                if (i != users.length - 1) const Divider(height: 1),
+                              ],
+                            ],
                           ),
-                          const SizedBox(height: AppSpacing.md),
-                        ],
-                    ],
-                  ),
+                        ),
                 ),
               ],
             );
@@ -216,102 +191,85 @@ class InstallerCommissioningScreen extends StatelessWidget {
   }
 }
 
-class _HandoverCard extends StatelessWidget {
-  const _HandoverCard({
+enum _UserAction { updateDetails, mqtt, revoke }
+
+class _UserListTile extends StatelessWidget {
+  const _UserListTile({
     required this.user,
-    required this.onHandover,
+    required this.onUpdateDetails,
     required this.onMqtt,
-    required this.onAssets,
     required this.onRevoke,
   });
 
   final KilowattsUserAccess user;
-  final VoidCallback onHandover;
+  final VoidCallback onUpdateDetails;
   final VoidCallback onMqtt;
-  final VoidCallback? onAssets;
   final VoidCallback onRevoke;
 
   @override
   Widget build(BuildContext context) {
     final assigned = user.installationId != null;
-    return SectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(child: Text(user.initials)),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(user.displayName, style: AppTextStyles.label),
-                    Text(user.email, style: AppTextStyles.caption),
-                  ],
-                ),
-              ),
-              StatusBadge(
-                label: user.roleLabel,
-                tone: assigned ? StatusTone.positive : StatusTone.warning,
-              ),
-            ],
-          ),
-          if (assigned) ...[
-            const SizedBox(height: AppSpacing.sm),
-            SelectableText(
-              'Installation ${user.installationId}',
-              style: AppTextStyles.caption,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            StreamBuilder<MqttPresence?>(
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      leading: CircleAvatar(
+        radius: 16,
+        child: Text(user.initials, style: AppTextStyles.caption),
+      ),
+      title: Text(user.displayName, style: AppTextStyles.label),
+      subtitle: assigned
+          ? StreamBuilder<MqttPresence?>(
               stream: AppStateScope.of(context).watchMqttPresence(
                 installationId: user.installationId!,
-                userUid: user.uid,
+                userUid: user.uid!,
               ),
               builder: (context, snapshot) {
                 final presence = snapshot.data;
-                final connected =
+                final online =
                     presence?.online == true && presence?.isFresh == true;
                 return Text(
-                  connected
-                      ? 'Homeowner app connected'
-                      : 'Homeowner app not connected',
+                  online ? 'User online' : 'User not online',
                   style: AppTextStyles.caption.copyWith(
-                    color: connected
-                        ? AppColors.success
-                        : AppColors.textTertiary,
+                    color: online ? AppColors.success : AppColors.textTertiary,
                   ),
                 );
               },
-            ),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              FilledButton.icon(
-                onPressed: onHandover,
-                icon: const Icon(Icons.assignment_ind_outlined, size: 18),
-                label: Text(assigned ? 'Update handover' : 'Start handover'),
+            )
+          : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StatusBadge(
+            label: user.roleLabel,
+            tone: assigned ? StatusTone.positive : StatusTone.warning,
+            compact: true,
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          PopupMenuButton<_UserAction>(
+            onSelected: (action) {
+              switch (action) {
+                case _UserAction.updateDetails:
+                  onUpdateDetails();
+                case _UserAction.mqtt:
+                  onMqtt();
+                case _UserAction.revoke:
+                  onRevoke();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: _UserAction.updateDetails,
+                child: Text('Update user details'),
               ),
-              OutlinedButton.icon(
-                onPressed: assigned ? onMqtt : null,
-                icon: const Icon(Icons.wifi_tethering_outlined, size: 18),
-                label: const Text('MQTT'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onAssets,
-                icon: const Icon(Icons.memory_outlined, size: 18),
-                label: const Text('Device assets'),
+              PopupMenuItem(
+                value: _UserAction.mqtt,
+                enabled: assigned,
+                child: const Text('MQTT'),
               ),
               if (assigned)
-                TextButton.icon(
-                  onPressed: onRevoke,
-                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                  icon: const Icon(Icons.link_off_rounded, size: 18),
-                  label: const Text('Revoke'),
+                const PopupMenuItem(
+                  value: _UserAction.revoke,
+                  child: Text('Revoke'),
                 ),
             ],
           ),
@@ -321,138 +279,3 @@ class _HandoverCard extends StatelessWidget {
   }
 }
 
-class _AssetsDialog extends StatefulWidget {
-  const _AssetsDialog({required this.installationId});
-
-  final String installationId;
-
-  @override
-  State<_AssetsDialog> createState() => _AssetsDialogState();
-}
-
-class _AssetsDialogState extends State<_AssetsDialog> {
-  final _name = TextEditingController();
-  final _deviceId = TextEditingController();
-  String _type = 'controller';
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _deviceId.dispose();
-    super.dispose();
-  }
-
-  Future<void> _add() async {
-    if (_name.text.trim().isEmpty || _deviceId.text.trim().isEmpty) return;
-    setState(() => _saving = true);
-    await AppStateScope.of(context).addInstallationAsset(
-      installationId: widget.installationId,
-      deviceId: _deviceId.text,
-      name: _name.text,
-      type: _type,
-    );
-    if (!mounted) return;
-    _name.clear();
-    _deviceId.clear();
-    setState(() => _saving = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Device assets'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _name,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Asset name'),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              TextField(
-                controller: _deviceId,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Device ID / serial number',
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              DropdownButtonFormField<String>(
-                initialValue: _type,
-                decoration: const InputDecoration(labelText: 'Asset type'),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'controller',
-                    child: Text('Central controller'),
-                  ),
-                  DropdownMenuItem(value: 'node', child: Text('Smart node')),
-                  DropdownMenuItem(
-                    value: 'battery',
-                    child: Text('Battery monitor'),
-                  ),
-                  DropdownMenuItem(value: 'meter', child: Text('Power meter')),
-                ],
-                onChanged: (value) => setState(() => _type = value!),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _add,
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: Text(_saving ? 'Adding…' : 'Add asset'),
-                ),
-              ),
-              const Divider(height: AppSpacing.xl),
-              StreamBuilder<List<InstallationAsset>>(
-                stream: AppStateScope.of(
-                  context,
-                ).watchInstallationAssets(widget.installationId),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const CircularProgressIndicator();
-                  }
-                  final assets = snapshot.data!;
-                  if (assets.isEmpty) {
-                    return const Text('No device assets assigned.');
-                  }
-                  return Column(
-                    children: [
-                      for (final asset in assets)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.memory_outlined),
-                          title: Text(asset.name),
-                          subtitle: Text('${asset.type} · ${asset.deviceId}'),
-                          trailing: IconButton(
-                            tooltip: 'Remove asset',
-                            onPressed: () => AppStateScope.of(context)
-                                .removeInstallationAsset(
-                                  installationId: widget.installationId,
-                                  assetId: asset.id,
-                                ),
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Done'),
-        ),
-      ],
-    );
-  }
-}

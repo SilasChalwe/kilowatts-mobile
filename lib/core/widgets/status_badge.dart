@@ -11,6 +11,7 @@ class StatusBadge extends StatelessWidget {
     required this.label,
     super.key,
     this.tone = StatusTone.neutral,
+    this.compact = false,
   });
 
   factory StatusBadge.online({bool online = true}) => StatusBadge(
@@ -20,6 +21,10 @@ class StatusBadge extends StatelessWidget {
 
   final String label;
   final StatusTone tone;
+
+  /// When true, renders as a small icon-only symbol instead of a labeled
+  /// pill — the label is still exposed via [Semantics] and a [Tooltip].
+  final bool compact;
 
   Color get _color {
     switch (tone) {
@@ -54,6 +59,27 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _color;
+    if (compact) {
+      return Tooltip(
+        message: label,
+        child: Semantics(
+          label: label,
+          child: ExcludeSemantics(
+            child: Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: color.withValues(alpha: 0.18)),
+              ),
+              child: Icon(_icon, size: 13, color: color),
+            ),
+          ),
+        ),
+      );
+    }
     return Semantics(
       container: true,
       label: label,

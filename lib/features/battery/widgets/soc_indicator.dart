@@ -5,9 +5,10 @@ import '../../../core/widgets/section_card.dart';
 import '../../system/models/system_state_model.dart';
 
 class SocIndicator extends StatelessWidget {
-  const SocIndicator({required this.state, super.key});
+  const SocIndicator({required this.state, this.isLive = true, super.key});
 
   final SystemStateModel state;
+  final bool isLive;
 
   @override
   Widget build(BuildContext context) {
@@ -17,15 +18,15 @@ class SocIndicator extends StatelessWidget {
         children: [
           SectionRow(
             label: 'Battery voltage',
-            value: Formatters.voltage(state.batteryVoltage),
+            value: Formatters.voltage(isLive ? state.batteryVoltage : null),
           ),
           SectionRow(
             label: 'Battery current',
-            value: Formatters.current(state.batteryCurrent),
+            value: Formatters.current(isLive ? state.batteryCurrent : null),
           ),
           SectionRow(
             label: 'Instantaneous power',
-            value: Formatters.power(state.batteryPowerW),
+            value: Formatters.power(isLive ? state.batteryPowerW : null),
           ),
         ],
       ),

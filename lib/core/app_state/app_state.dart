@@ -524,40 +524,11 @@ class AppState {
       ) ??
       Stream.value(null);
 
-  Future<String> assignHomeowner({
+  Future<void> setUserRole({
+    required String email,
     required String uid,
-    required String installationName,
-  }) => _accessControlService.assignHomeowner(
-    uid: uid,
-    installationName: installationName,
-  );
-
-  Future<void> revokeAccess(String uid) =>
-      _accessControlService.revokeAccess(uid);
-
-  Stream<List<InstallationAsset>> watchInstallationAssets(
-    String installationId,
-  ) => _accessControlService.watchAssets(installationId);
-
-  Future<void> addInstallationAsset({
-    required String installationId,
-    required String deviceId,
-    required String name,
-    required String type,
-  }) => _accessControlService.addAsset(
-    installationId: installationId,
-    deviceId: deviceId,
-    name: name,
-    type: type,
-  );
-
-  Future<void> removeInstallationAsset({
-    required String installationId,
-    required String assetId,
-  }) => _accessControlService.removeAsset(
-    installationId: installationId,
-    assetId: assetId,
-  );
+    required KilowattsRole role,
+  }) => _accessControlService.setRole(email: email, uid: uid, role: role);
 
   Future<void> setAlertRead(String id, bool read) async {
     if (_disposed) return;
