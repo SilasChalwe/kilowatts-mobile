@@ -7,6 +7,7 @@ import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
@@ -45,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     await appState.signOut();
     if (!context.mounted) return;
+    AppToast.show(context, message: 'Signed out.', tone: AppToastTone.success);
     Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.root, (_) => false);
   }
 

@@ -15,6 +15,7 @@ import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
 import '../models/telemetry_point.dart';
 import '../services/command_outcome.dart' show CommandOutcome;
+import '../services/local_notification_service.dart';
 import '../services/local_state_service.dart';
 import '../services/mqtt_config.dart';
 import '../services/mqtt_cloud_config_store.dart';
@@ -42,11 +43,13 @@ class AppState {
     this._mqttCloudConfigStore,
     this.mqttPresenceStore,
     this.telemetryHistoryStore,
+    this._localNotificationService,
   }) : _mqtt = mqttService,
        _localState = localStateService,
        _accessControlService = accessControlService ?? AccessControlService() {
     _wireMqttSubscriptions();
     unawaited(_loadThemeMode());
+    unawaited(_initLocalNotifications());
   }
 
   final AuthService authService;
@@ -56,6 +59,7 @@ class AppState {
   final MqttPresenceStore? mqttPresenceStore;
   final AccessControlService _accessControlService;
   final TelemetryHistoryStore? telemetryHistoryStore;
+  final LocalNotificationService? _localNotificationService;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Future<void> _historyWriteQueue = Future<void>.value();
   Timer? _presenceTimer;
@@ -102,6 +106,13 @@ class AppState {
     themeMode.value = mode;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('kilowatts.themeMode', mode.name);
+  }
+
+  Future<void> _initLocalNotifications() async {
+    final service = _localNotificationService;
+    if (service == null) return;
+    await service.initialize();
+    await service.requestPermission();
   }
 
   Future<void> _loadThemeMode() async {
@@ -194,6 +205,7 @@ class AppState {
             ? next.sublist(0, _maxStoredAlerts)
             : next;
         unawaited(_persistAlerts());
+        unawaited(_localNotificationService?.showAlert(alert));
       }),
     );
     _subscriptions.add(
@@ -500,8 +512,28 @@ class AppState {
     );
   }
 
-  Future<CommandOutcome> setBatteryReserve(double reserveSoCPercent) =>
-      _mqtt.setBatteryReserve(reserveSoCPercent);
+  Future<CommandOutcome> setBatteryPlan({
+    required double budget,
+    required double reserve,
+    required double minSoc,
+    double? runtime,
+  }) => _mqtt.setBatteryPlan(
+    budget: budget,
+    reserve: reserve,
+    minSoc: minSoc,
+    runtime: runtime,
+  );
+
+  Future<CommandOutcome> setSensorMode({required bool useHardwareSensor}) =>
+      _mqtt.setSensorMode(useHardwareSensor: useHardwareSensor);
+
+  Future<CommandOutcome> setSimulatedValues({
+    double? voltage,
+    double? current,
+    double? soc,
+  }) => _mqtt.setSimulatedValues(voltage: voltage, current: current, soc: soc);
+
+  Future<CommandOutcome> triggerOptimizeNow() => _mqtt.triggerOptimizeNow();
 
   Future<CommandOutcome> configureLoad(LoadConfiguration configuration) =>
       _mqtt.configureLoad(configuration);

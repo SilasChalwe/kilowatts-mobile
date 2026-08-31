@@ -1,36 +1,24 @@
 /// Kilowatts v1 MQTT topic contract.
 ///
-/// These are the namespaces the Central Node firmware currently publishes
-/// and subscribes to. Field names inside each payload are treated
-/// defensively (see `core/utils/json_parsing.dart`) since the firmware
-/// contract is still evolving.
+/// Exactly five topics, matching `lib/MqttManager/README.md` and
+/// `MqttManager::onConnected`/`publishAcknowledgement`/`publishState` in the
+/// firmware repo verbatim — confirmed against a real broker capture, not
+/// inferred. There is no per-section state topic and no per-command-type
+/// command topic on the wire: one combined `state` payload
+/// (`{"system":{},"loads":{},"nodes":{}}`) and one `command` topic for every
+/// command type.
 class MqttTopics {
   const MqttTopics(this.namespace);
 
   final String namespace;
 
   String get status => '$namespace/status';
-  String get stateSystem => '$namespace/state/system';
-  String get stateTree => '$namespace/state/tree';
-  String get stateLoads => '$namespace/state/loads';
-  String get stateNodes => '$namespace/state/nodes';
-  String get events => '$namespace/events';
-  String get alerts => '$namespace/alerts';
-  String get commandsLoad => '$namespace/commands/load';
-  String get commandsConfig => '$namespace/commands/config';
-  String get commandsReserve => '$namespace/commands/reserve';
-  String get acks => '$namespace/acks';
+  String get state => '$namespace/state';
+  String get command => '$namespace/command';
+  String get ack => '$namespace/ack';
+  String get alert => '$namespace/alert';
 
-  List<String> get subscriptions => [
-    status,
-    stateSystem,
-    stateTree,
-    stateLoads,
-    stateNodes,
-    events,
-    alerts,
-    acks,
-  ];
+  List<String> get subscriptions => [status, state, ack, alert];
 }
 
 abstract final class AppConstants {

@@ -1,6 +1,36 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kilowatts_mobile/features/loads/models/load_model.dart';
 import 'package:kilowatts_mobile/features/system/models/node_model.dart';
 import 'package:kilowatts_mobile/features/system/models/topology_model.dart';
+
+/// Matches the real, flat `state.nodes.nodes[]` array (verified against a
+/// live broker capture) — no recursive tree, no per-node `loads`/`children`.
+/// Communication hierarchy is expressed by each node's own `nextHopMac`,
+/// and a node's loads are a separate flat array (`state.loads.loads[]`)
+/// cross-referenced by `nodeMac`.
+const _centralMac = 'AA:AA:AA:AA:AA:AA';
+const _smartMac = 'BB:BB:BB:BB:BB:BB';
+const _grandchildMac = 'CC:CC:CC:CC:CC:CC';
+
+Map<String, dynamic> _node({
+  required String mac,
+  required String role,
+  required String name,
+  bool? online,
+  int? hopCountToCentral,
+  String? nextHopMac,
+}) {
+  return {
+    'mac': mac,
+    'role': role,
+    'nodeName': name,
+    'lifecycleState': 'commissioned',
+    'syncState': 'SYNCED',
+    'online': online,
+    'hopCountToCentral': hopCountToCentral,
+    'nextHopMac': nextHopMac,
+  };
+}
 
 Map<String, dynamic> _load({required String nodeMac, required int relayPin}) {
   return {
@@ -8,9 +38,8 @@ Map<String, dynamic> _load({required String nodeMac, required int relayPin}) {
     'nodeName': 'Node',
     'nodeMac': nodeMac,
     'relayPin': relayPin,
-    'controlMode': 'AUTOMATIC',
+    'controlMode': 'AUTO',
     'mode': 'AUTO_ON',
-    'manualControlAllowed': false,
     'priority': 5,
     'powerRatingWatts': 5.0,
     'powerType': 'DC',
@@ -19,68 +48,55 @@ Map<String, dynamic> _load({required String nodeMac, required int relayPin}) {
   };
 }
 
-/// Matches `TopologyTree::buildTreeJson`/`appendLoadsForNode`'s exact
-/// recursive shape (see lib/NodeManager/Central/TopologyTree.cpp) — a
-/// `{"central":{...}}` tree with nested `children`, and a flat `"loads"`
-/// array (the same Load shape `state/loads` publishes) at every node.
-/// Firmware never emits a `"branches"` key.
-const _centralMac = 'AA:AA:AA:AA:AA:AA';
-const _smartMac = 'BB:BB:BB:BB:BB:BB';
-const _grandchildMac = 'CC:CC:CC:CC:CC:CC';
+List<Map<String, dynamic>> _nodesJson() => [
+  _node(mac: _centralMac, role: 'central', name: 'Central', online: null),
+  _node(
+    mac: _smartMac,
+    role: 'smart',
+    name: 'Smart A',
+    online: true,
+    hopCountToCentral: 1,
+    nextHopMac: _centralMac,
+  ),
+  _node(
+    mac: _grandchildMac,
+    role: 'smart',
+    name: 'Smart B',
+    online: false,
+    hopCountToCentral: 2,
+    nextHopMac: _smartMac,
+  ),
+];
 
-Map<String, dynamic> _tree() {
-  return {
-    'schemaVersion': 3,
-    'central': {
-      'type': 'central',
-      'name': 'Central',
-      'mac': _centralMac,
-      'online': true,
-      'loads': [_load(nodeMac: _centralMac, relayPin: 25)],
-      'children': [
-        {
-          'type': 'smartNode',
-          'name': 'Smart A',
-          'mac': _smartMac,
-          'parentMac': _centralMac,
-          'hopCountToCentral': 1,
-          'online': true,
-          'loads': [_load(nodeMac: _smartMac, relayPin: 4)],
-          'children': [
-            {
-              'type': 'smartNode',
-              'name': 'Smart B',
-              'mac': _grandchildMac,
-              'parentMac': _smartMac,
-              'hopCountToCentral': 2,
-              'online': false,
-              'loads': [_load(nodeMac: _grandchildMac, relayPin: 12)],
-              'children': [],
-            },
-          ],
-        },
-      ],
-    },
-  };
-}
+List<LoadModel> _loads() => [
+  _load(nodeMac: _centralMac, relayPin: 25),
+  _load(nodeMac: _smartMac, relayPin: 4),
+  _load(nodeMac: _grandchildMac, relayPin: 12),
+].map(LoadModel.fromJson).toList();
 
 void main() {
-  group('TopologyModel.fromJson', () {
-    test('walks a multi-level recursive tree and flattens the node list', () {
-      final topology = TopologyModel.fromJson(_tree());
+  group('NodeModel.listFromState', () {
+    test('builds one NodeModel per flat state.nodes entry', () {
+      final topology = TopologyModel(
+        nodes: NodeModel.listFromState(_nodesJson(), _loads()),
+      );
       expect(topology.nodes, hasLength(3));
     });
 
-    test('identifies the central node by tree position, not a wire field', () {
-      final topology = TopologyModel.fromJson(_tree());
+    test('identifies the central node from its role field', () {
+      final topology = TopologyModel(
+        nodes: NodeModel.listFromState(_nodesJson(), _loads()),
+      );
       expect(topology.central?.mac, _centralMac);
       expect(topology.central?.role, NodeRole.central);
     });
 
     test(
-      'preserves communication hierarchy (parentMac/hopCount) across hops',
+      'reconstructs communication hierarchy from nextHopMac across hops',
       () {
-        final topology = TopologyModel.fromJson(_tree());
+        final topology = TopologyModel(
+          nodes: NodeModel.listFromState(_nodesJson(), _loads()),
+        );
         final grandchild = topology.nodeByMac(_grandchildMac);
 
         expect(grandchild, isNotNull);
@@ -95,9 +111,11 @@ void main() {
     );
 
     test(
-      'each node carries its own loads, parsed from that node\'s "loads" array',
+      'cross-references each node\'s own loads from the flat loads array by nodeMac',
       () {
-        final topology = TopologyModel.fromJson(_tree());
+        final topology = TopologyModel(
+          nodes: NodeModel.listFromState(_nodesJson(), _loads()),
+        );
 
         expect(topology.nodeByMac(_smartMac)!.loads.single.relayPin, 4);
         expect(topology.nodeByMac(_grandchildMac)!.loads.single.relayPin, 12);
@@ -105,16 +123,12 @@ void main() {
       },
     );
 
-    test(
-      'a null central (no Central registered yet) yields TopologyModel.empty',
-      () {
-        final topology = TopologyModel.fromJson({
-          'schemaVersion': 3,
-          'central': null,
-        });
-        expect(topology.nodes, isEmpty);
-        expect(topology.central, isNull);
-      },
-    );
+    test('an empty node list yields TopologyModel.empty-equivalent state', () {
+      final topology = TopologyModel(
+        nodes: NodeModel.listFromState(const [], const []),
+      );
+      expect(topology.nodes, isEmpty);
+      expect(topology.central, isNull);
+    });
   });
 }

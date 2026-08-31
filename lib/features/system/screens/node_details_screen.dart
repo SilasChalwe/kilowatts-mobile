@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../../core/widgets/page_header.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
@@ -71,20 +72,24 @@ class NodeDetailsScreen extends StatelessWidget {
     if (configuration == null || !context.mounted) return;
     final outcome = await appState.configureLoad(configuration);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          outcome.isConfirmed
-              ? 'Load added.'
-              : outcome.message ?? 'Central rejected the load.',
-        ),
-      ),
+    AppToast.show(
+      context,
+      message: outcome.isConfirmed
+          ? 'Load added.'
+          : outcome.message ?? 'Central rejected the load.',
+      tone: outcome.isConfirmed ? AppToastTone.success : AppToastTone.error,
     );
   }
 
   Widget _loads(BuildContext context) {
     final appState = AppStateScope.of(context);
-    return ValueListenableBuilder<List<SystemNodeModel>>(
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        appState.connectionStatus,
+        appState.centralAvailability,
+        appState.lastLiveSystemUpdate,
+      ]),
+      builder: (context, _) => ValueListenableBuilder<List<SystemNodeModel>>(
       valueListenable: appState.systemNodes,
       builder: (context, systemNodes, _) {
         SystemNodeModel? matched;
@@ -97,7 +102,10 @@ class NodeDetailsScreen extends StatelessWidget {
         return ValueListenableBuilder<TopologyModel?>(
           valueListenable: appState.topology,
           builder: (context, topology, _) {
-            final loads = topology?.nodeByMac(node.mac)?.loads ?? const [];
+            final isLive = appState.isSystemStateLive;
+            final loads = isLive
+                ? topology?.nodeByMac(node.mac)?.loads ?? const []
+                : const <LoadModel>[];
             final freePins = matched == null
                 ? const <int>[]
                 : matched.availableRelayPins
@@ -106,6 +114,7 @@ class NodeDetailsScreen extends StatelessWidget {
                       )
                       .toList(growable: false);
             final canAddLoad =
+                appState.isSystemStateLive &&
                 matched != null &&
                 matched.isSmartNode &&
                 matched.isCommissioned &&
@@ -122,22 +131,26 @@ class NodeDetailsScreen extends StatelessWidget {
                     )
                   : null,
               child: loads.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.sm,
+                      ),
                       child: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.electrical_services_outlined,
                             size: 20,
                             color: AppColors.textSecondary,
                           ),
-                          SizedBox(width: AppSpacing.sm),
+                          const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'No loads reported',
+                                  isLive
+                                      ? 'No loads reported'
+                                      : 'Not connected to Central',
                                   style: AppTextStyles.label,
                                 ),
                               ],
@@ -171,6 +184,7 @@ class NodeDetailsScreen extends StatelessWidget {
           },
         );
       },
+      ),
     );
   }
 

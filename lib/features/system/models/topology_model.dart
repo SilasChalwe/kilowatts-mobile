@@ -1,12 +1,11 @@
-import '../../../core/utils/json_parsing.dart';
 import 'node_model.dart';
 
-/// Parsed payload of `kilowatts/v1/state/tree` — firmware publishes this as
-/// a recursive `{"central":{"loads":[...],"children":[{...}]}}` tree
-/// (`TopologyTree::buildTreeJson`/`appendLoadsForNode`), not a flat list.
-/// This model walks that tree once at parse time and flattens it into
-/// `nodes` (each carrying its own `loads`) so every consumer keeps working
-/// with simple lookups.
+/// Firmware publishes a single flat `state.nodes.nodes[]` array, not a
+/// recursive tree — [MqttService] builds each [NodeModel] (cross-referencing
+/// `state.loads.loads[]` by `nodeMac` for each node's own loads, and other
+/// nodes' `nextHopMac` for communication children) and hands the resulting
+/// flat list straight to this constructor. The getters below reconstruct the
+/// hierarchy from that flat list on demand.
 class TopologyModel {
   const TopologyModel({this.nodes = const []});
 
@@ -38,22 +37,5 @@ class TopologyModel {
   /// children.
   List<NodeModel> childrenOf(String mac) {
     return nodes.where((n) => n.nextHopMac == mac).toList();
-  }
-
-  factory TopologyModel.fromJson(Map<String, dynamic> json) {
-    final central = json.mapOrNull('central');
-    if (central == null) return TopologyModel.empty;
-
-    final nodes = <NodeModel>[];
-
-    void walk(Map<String, dynamic> nodeJson, {required bool isCentral}) {
-      nodes.add(NodeModel.fromJson(nodeJson, isCentral: isCentral));
-      for (final childJson in nodeJson.listOfMaps('children')) {
-        walk(childJson, isCentral: false);
-      }
-    }
-
-    walk(central, isCentral: true);
-    return TopologyModel(nodes: nodes);
   }
 }

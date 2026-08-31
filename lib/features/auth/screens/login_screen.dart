@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../../core/widgets/inline_message.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../data/auth_failure.dart';
@@ -62,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (!mounted) return;
+      AppToast.show(context, message: 'Signed in.', tone: AppToastTone.success);
       Navigator.of(
         context,
       ).pushNamedAndRemoveUntil(AppRoutes.root, (_) => false);

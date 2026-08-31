@@ -1,20 +1,32 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/mqtt_config.dart';
+import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 
 Future<MqttConfig?> showMqttConfigurationDialog(
   BuildContext context,
-  MqttConfig initial,
-) => showDialog<MqttConfig>(
+  MqttConfig initial, {
+  required Future<MqttConnectionStatus> Function(MqttConfig config)
+  onTestConnection,
+}) => showDialog<MqttConfig>(
   context: context,
-  builder: (_) => _MqttConfigurationDialog(initial: initial),
+  builder: (_) => _MqttConfigurationDialog(
+    initial: initial,
+    onTestConnection: onTestConnection,
+  ),
 );
 
 class _MqttConfigurationDialog extends StatefulWidget {
-  const _MqttConfigurationDialog({required this.initial});
+  const _MqttConfigurationDialog({
+    required this.initial,
+    required this.onTestConnection,
+  });
 
   final MqttConfig initial;
+  final Future<MqttConnectionStatus> Function(MqttConfig config)
+  onTestConnection;
 
   @override
   State<_MqttConfigurationDialog> createState() =>
@@ -29,6 +41,8 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
   late final TextEditingController _username;
   late final TextEditingController _password;
   late bool _useTls;
+  bool _testing = false;
+  MqttConnectionStatus? _testStatus;
 
   @override
   void initState() {
@@ -39,6 +53,9 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
     _username = TextEditingController(text: widget.initial.username ?? '');
     _password = TextEditingController(text: widget.initial.password ?? '');
     _useTls = widget.initial.useTls;
+    for (final controller in [_host, _port, _namespace, _username, _password]) {
+      controller.addListener(_invalidateTest);
+    }
   }
 
   @override
@@ -51,8 +68,12 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
     super.dispose();
   }
 
-  void _save() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+  void _invalidateTest() {
+    if (_testStatus != null) setState(() => _testStatus = null);
+  }
+
+  MqttConfig? _buildConfig() {
+    if (!(_formKey.currentState?.validate() ?? false)) return null;
     final config = MqttConfig(
       host: _host.text.trim(),
       port: int.parse(_port.text.trim()),
@@ -61,9 +82,42 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
       username: _username.text.trim().isEmpty ? null : _username.text.trim(),
       password: _password.text.isEmpty ? null : _password.text,
     );
-    if (!config.isConfigured) return;
+    return config.isConfigured ? config : null;
+  }
+
+  Future<void> _test() async {
+    final config = _buildConfig();
+    if (config == null) return;
+    setState(() {
+      _testing = true;
+      _testStatus = null;
+    });
+    final status = await widget.onTestConnection(config);
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _testStatus = status;
+    });
+  }
+
+  void _save() {
+    final config = _buildConfig();
+    if (config == null || _testStatus != MqttConnectionStatus.connected) {
+      return;
+    }
     Navigator.of(context).pop(config);
   }
+
+  String _statusLabel(MqttConnectionStatus status) => switch (status) {
+    MqttConnectionStatus.connected => 'Connected.',
+    MqttConnectionStatus.authenticationFailure =>
+      'Rejected: check username/password.',
+    MqttConnectionStatus.tlsFailure => 'TLS handshake failed.',
+    MqttConnectionStatus.networkFailure =>
+      'Could not reach the broker. Check host/port.',
+    MqttConnectionStatus.notConfigured => 'Enter connection details first.',
+    _ => 'Could not connect.',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +166,8 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
                   controller: _namespace,
                   decoration: const InputDecoration(
                     labelText: 'Topic namespace',
-                    hintText: 'kilowatts/v1/home-001',
+                    hintText: 'kilowatts/v1',
+                    helperText: 'Firmware publishes under one fixed namespace — do not append a per-installation suffix.',
                   ),
                   validator: (value) {
                     final text = value?.trim() ?? '';
@@ -145,7 +200,46 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use TLS'),
                   value: _useTls,
-                  onChanged: (value) => setState(() => _useTls = value),
+                  onChanged: (value) => setState(() {
+                    _useTls = value;
+                    _invalidateTest();
+                  }),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _testing ? null : _test,
+                      icon: _testing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.wifi_tethering_outlined,
+                              size: 18,
+                            ),
+                      label: Text(
+                        _testing ? 'Testing…' : 'Test connection',
+                      ),
+                    ),
+                    if (_testStatus != null) ...[
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          _statusLabel(_testStatus!),
+                          style: TextStyle(
+                            color: _testStatus == MqttConnectionStatus.connected
+                                ? AppColors.success
+                                : AppColors.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -157,7 +251,12 @@ class _MqttConfigurationDialogState extends State<_MqttConfigurationDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _save, child: const Text('Save MQTT')),
+        FilledButton(
+          onPressed: _testStatus == MqttConnectionStatus.connected
+              ? _save
+              : null,
+          child: const Text('Save MQTT'),
+        ),
       ],
     );
   }

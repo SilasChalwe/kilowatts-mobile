@@ -19,11 +19,6 @@ service cloud.firestore {
         allow write: if isInstaller(db);
       }
 
-      match /assets/{assetId} {
-        allow read: if isInstaller(db) || isAssignedHomeowner(installationId, db);
-        allow write: if isInstaller(db);
-      }
-
       // presence/{presenceUid} — a Firebase Auth UID, NOT an email. A
       // different identity space from users/{email} above.
       match /presence/{presenceUid} {

@@ -58,9 +58,16 @@ class _LoadsScreenState extends State<LoadsScreen> {
     final appState = AppStateScope.of(context);
 
     return SafeArea(
-      child: ValueListenableBuilder<List<LoadModel>>(
-        valueListenable: appState.loads,
-        builder: (context, loads, _) {
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          appState.loads,
+          appState.connectionStatus,
+          appState.centralAvailability,
+          appState.lastLiveSystemUpdate,
+        ]),
+        builder: (context, _) {
+          final isLive = appState.isSystemStateLive;
+          final loads = isLive ? appState.loads.value : const <LoadModel>[];
           final filtered = _apply(loads);
 
           return SingleChildScrollView(
@@ -98,10 +105,14 @@ class _LoadsScreenState extends State<LoadsScreen> {
                   const SizedBox(height: AppSpacing.md),
                   if (filtered.isEmpty)
                     EmptyState(
-                      icon: loads.isEmpty
+                      icon: !isLive
+                          ? Icons.cloud_off_outlined
+                          : loads.isEmpty
                           ? Icons.electrical_services_outlined
                           : Icons.search_off_rounded,
-                      title: loads.isEmpty
+                      title: !isLive
+                          ? 'Not connected to Central'
+                          : loads.isEmpty
                           ? 'No loads configured'
                           : 'No loads match these filters',
                     )

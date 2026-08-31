@@ -30,17 +30,20 @@ class LoadConfiguration {
   final LoadPowerType powerType;
   final LoadSchedule schedule;
 
+  /// Flat wire shape firmware's `handleLoadCommandMessage` requires for
+  /// `action: "add"` (`ConfigCommandAction::CONFIGURE_LOAD` in
+  /// `MqttManager.cpp`) — `nodeMac`/`relayPin` alongside `name`, `power`,
+  /// `priority`, `mode`, `powerType`, `activeHigh` and `schedule` as
+  /// top-level siblings, not nested under a `load` object.
   Map<String, dynamic> toCommandPayload() => {
     'nodeMac': nodeMac,
-    'load': {
-      'name': name,
-      'relayPin': relayPin,
-      'relayActiveHigh': relayActiveHigh,
-      'mode': mode == LoadMode.fixed ? 'FIXED_OFF' : 'AUTO_OFF',
-      'powerType': powerType.wireValue,
-      'priority': priority,
-      'powerRatingWatts': powerRatingWatts,
-      'schedule': schedule.toWireJson(),
-    },
+    'relayPin': relayPin,
+    'name': name,
+    'power': powerRatingWatts,
+    'priority': priority,
+    'mode': mode == LoadMode.fixed ? 'FIXED_OFF' : 'AUTO_OFF',
+    'powerType': powerType.wireValue,
+    'activeHigh': relayActiveHigh,
+    'schedule': schedule.toWireJson(),
   };
 }

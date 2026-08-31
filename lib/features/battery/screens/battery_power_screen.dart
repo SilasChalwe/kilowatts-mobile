@@ -5,6 +5,7 @@ import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../widgets/battery_reserve_card.dart';
 import '../widgets/power_budget_card.dart';
+import '../widgets/sensor_diagnostics_card.dart';
 import '../widgets/soc_indicator.dart';
 
 class BatteryPowerScreen extends StatelessWidget {
@@ -40,8 +41,9 @@ class BatteryPowerScreen extends StatelessWidget {
               maxColumns: 1,
               children: [
                 SocIndicator(state: state, isLive: isLive),
-                BatteryReserveCard(state: state),
+                BatteryReserveCard(state: state, isLive: isLive),
                 PowerBudgetCard(state: state, isLive: isLive),
+                SensorDiagnosticsCard(state: state, isLive: isLive),
               ],
             ),
           ),

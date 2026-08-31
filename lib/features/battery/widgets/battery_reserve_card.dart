@@ -7,162 +7,133 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../system/models/system_state_model.dart';
+import 'power_plan_dialog.dart';
 
+/// Shows the current power plan as a read-only summary; editing happens in
+/// a modal (`showPowerPlanDialog`) reached via the trailing "⋮" button, so
+/// the card itself never carries input fields. Firmware's `battery set`
+/// command requires `budget`, `reserve` and `minSoc` together every time —
+/// there is no partial/reserve-only update
+/// (`MqttManager::handleBatteryCommandMessage` rejects the command if any of
+/// the three is missing) — but the dialog pre-fills all of them from the
+/// current values, so changing just the runtime (independently of
+/// budget/reserve, as the frontend contract allows) never requires
+/// re-entering the others. `minSoc`/`runtime` are not published back in
+/// `state.system`, so this card remembers the last values it successfully
+/// applied.
 class BatteryReserveCard extends StatefulWidget {
-  const BatteryReserveCard({required this.state, super.key});
+  const BatteryReserveCard({required this.state, this.isLive = true, super.key});
 
   final SystemStateModel state;
+
+  /// Whether [state] is a live broadcast from a currently-connected Central
+  /// node, as opposed to the last value cached locally from a previous
+  /// session (`LocalStateService.readCachedSystemState`, restored on app
+  /// startup before any connection exists). When false, every reading below
+  /// is shown as unavailable and the editor is disabled — otherwise a stale
+  /// cached number looks identical to a live one.
+  final bool isLive;
 
   @override
   State<BatteryReserveCard> createState() => _BatteryReserveCardState();
 }
 
 class _BatteryReserveCardState extends State<BatteryReserveCard> {
-  double? _draftPercent;
+  double? _lastKnownMinSoc = 20;
+  double? _lastKnownRuntime;
 
-  /// The live reserve value at the moment a change was sent. Central's ack
-  /// confirms the command was applied, but its *next* state broadcast is a
-  /// separate, later MQTT message — trusting the ack alone and clearing
-  /// [_draftPercent] immediately made the slider flash back to this stale
-  /// value for the gap in between. Keeping the draft visible until the live
-  /// value actually moves away from this baseline avoids that flash.
-  double? _baselineBeforeApply;
-  bool _isSending = false;
-  String? _message;
-  bool _messageIsError = false;
-
-  @override
-  void didUpdateWidget(covariant BatteryReserveCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_baselineBeforeApply != null &&
-        widget.state.reserveSoCPercent != _baselineBeforeApply) {
-      // Central has published a fresh value since we applied — it's now
-      // safe to trust live state again instead of the optimistic draft.
-      setState(() {
-        _draftPercent = null;
-        _baselineBeforeApply = null;
-      });
-    }
-  }
-
-  Future<void> _apply(double percent) async {
-    _baselineBeforeApply = widget.state.reserveSoCPercent;
-    setState(() {
-      _isSending = true;
-      _message = null;
-      _draftPercent = percent;
-    });
-    final outcome = await AppStateScope.of(context).setBatteryReserve(percent);
-    if (!mounted) return;
-    setState(() {
-      _isSending = false;
-      _messageIsError = !outcome.isConfirmed;
-      _message = outcome.isConfirmed
-          ? 'Central confirmed the new reserve.'
-          : outcome.message ?? 'Central rejected this command.';
-      if (!outcome.isConfirmed) {
-        // The change didn't take effect — drop the draft immediately so the
-        // slider reflects the real, unchanged live value.
-        _draftPercent = null;
-        _baselineBeforeApply = null;
-      }
-    });
+  Future<void> _openEditor() async {
+    final state = widget.state;
+    _lastKnownRuntime ??= state.requiredRuntimeHours;
+    await showPowerPlanDialog(
+      context,
+      initialBudget: state.powerBudgetWatts,
+      initialReserve: state.powerReserveWatts,
+      initialMinSoc: _lastKnownMinSoc,
+      initialRuntime: _lastKnownRuntime,
+      onApply: ({required budget, required reserve, required minSoc, runtime}) async {
+        final outcome = await AppStateScope.of(context).setBatteryPlan(
+          budget: budget,
+          reserve: reserve,
+          minSoc: minSoc,
+          runtime: runtime,
+        );
+        if (outcome.isConfirmed && mounted) {
+          setState(() {
+            _lastKnownMinSoc = minSoc;
+            _lastKnownRuntime = runtime;
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Central confirmed the new power plan.')));
+        }
+        return outcome;
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
-    final configured = state.reserveConfigured == true;
-    final livePercent = state.reserveSoCPercent;
-    final sliderValue = (_draftPercent ?? livePercent ?? 20)
-        .clamp(0, 100)
-        .toDouble();
-    final ratedKwh = state.batteryRatedEnergyWattHours == null
+    final isLive = widget.isLive;
+    final capacityAh = isLive ? state.batteryCapacityAmpHours : null;
+    final nominalVoltage = isLive ? state.batteryNominalVoltageV : null;
+    final ratedKwh = !isLive || state.batteryRatedEnergyWattHours == null
         ? null
         : state.batteryRatedEnergyWattHours! / 1000;
-    final storedKwh = state.storedEnergyWattHours == null
+    final storedKwh = !isLive || state.storedEnergyWattHours == null
         ? null
         : state.storedEnergyWattHours! / 1000;
-    final usableKwh = state.usableEnergyWattHours == null
+    final usableKwh = !isLive || state.usableEnergyWattHours == null
         ? null
         : state.usableEnergyWattHours! / 1000;
+    final runtimeAchievable = isLive ? state.requiredRuntimeAchievable : null;
 
     return SectionCard(
-      title: 'Battery reserve',
+      title: 'Power plan',
+      trailing: IconButton(
+        icon: const Icon(Icons.more_vert),
+        tooltip: 'Edit power plan',
+        onPressed: isLive ? _openEditor : null,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (state.batteryCapacityAmpHours != null) ...[
-            SectionRow(
-              label: 'Battery capacity',
-              value:
-                  '${state.batteryCapacityAmpHours!.toStringAsFixed(state.batteryCapacityAmpHours! % 1 == 0 ? 0 : 1)} Ah',
-            ),
-            if (ratedKwh != null)
-              SectionRow(
-                label: 'Total energy',
-                value: Formatters.energy(ratedKwh),
-              ),
-            const SizedBox(height: AppSpacing.sm),
-          ],
-          if (!configured)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-              child: Text('Not configured yet', style: AppTextStyles.label),
-            )
-          else ...[
-            Text(
-              '${sliderValue.round()}%',
-              style: AppTextStyles.display.copyWith(fontSize: 28),
-            ),
-            Slider(
-              value: sliderValue,
-              min: 0,
-              max: 100,
-              divisions: 100,
-              label: '${sliderValue.round()}%',
-              onChanged: _isSending
-                  ? null
-                  : (value) => setState(() => _draftPercent = value),
-              onChangeEnd: _isSending ? null : _apply,
-            ),
-            const Divider(),
-            SectionRow(
-              label: 'Stored energy',
-              value: Formatters.energy(storedKwh),
-            ),
-            SectionRow(
-              label: 'Usable above reserve',
-              value: Formatters.energy(usableKwh),
-            ),
-            if (state.requiredRuntimeConfigured == true)
-              SectionRow(
-                label: 'Sustainable power',
-                value: Formatters.power(state.sustainablePowerW),
-              ),
-          ],
-          if (_message != null) ...[
-            const SizedBox(height: AppSpacing.sm),
+          if (!isLive)
             Container(
               width: double.infinity,
+              margin: const EdgeInsets.only(bottom: AppSpacing.sm),
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.sm,
                 vertical: AppSpacing.xs,
               ),
               decoration: BoxDecoration(
-                color: _messageIsError
-                    ? AppColors.errorSoft
-                    : AppColors.successSoft,
+                color: AppColors.errorSoft,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Text(
-                _message!,
-                style: AppTextStyles.caption.copyWith(
-                  color: _messageIsError ? AppColors.error : AppColors.success,
-                ),
+                'Not connected to Central — readings below are unavailable.',
+                style: AppTextStyles.caption.copyWith(color: AppColors.error),
               ),
             ),
+          if (capacityAh != null) ...[
+            SectionRow(
+              label: 'Battery capacity',
+              value: '${capacityAh.toStringAsFixed(capacityAh % 1 == 0 ? 0 : 1)} Ah',
+            ),
+            if (nominalVoltage != null)
+              SectionRow(label: 'Nominal voltage', value: Formatters.voltage(nominalVoltage)),
+            if (ratedKwh != null)
+              SectionRow(label: 'Total energy', value: Formatters.energy(ratedKwh)),
+            const SizedBox(height: AppSpacing.sm),
           ],
+          SectionRow(label: 'Stored energy', value: Formatters.energy(storedKwh)),
+          SectionRow(label: 'Usable above minimum', value: Formatters.energy(usableKwh)),
+          if (runtimeAchievable != null)
+            SectionRow(
+              label: 'Runtime target',
+              value: runtimeAchievable ? 'Achievable' : 'Not achievable',
+            ),
         ],
       ),
     );

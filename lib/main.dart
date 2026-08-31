@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'core/app_state/app_state.dart';
+import 'core/services/local_notification_service.dart';
 import 'core/services/local_state_service.dart';
 import 'core/services/mqtt_cloud_config_store.dart';
 import 'core/services/mqtt_presence_store.dart';
@@ -29,6 +30,7 @@ Future<void> main() async {
       mqttCloudConfigStore: MqttCloudConfigStore(),
       mqttPresenceStore: MqttPresenceStore(),
       telemetryHistoryStore: TelemetryHistoryStore(),
+      localNotificationService: LocalNotificationService(),
     );
 
     runApp(KilowattsApp(appState: appState));

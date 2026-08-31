@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../models/load_model.dart';
 
 /// Edits the preferred running window used by the firmware's AUTO planner.
@@ -51,8 +52,10 @@ class ScheduleEditor extends StatelessWidget {
 
     if (picked.hour == startHour && picked.minute == startMinute) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Start and end time must be different.')),
+      AppToast.show(
+        context,
+        message: 'Start and end time must be different.',
+        tone: AppToastTone.error,
       );
       return;
     }

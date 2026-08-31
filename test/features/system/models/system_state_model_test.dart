@@ -1,52 +1,46 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kilowatts_mobile/features/system/models/system_state_model.dart';
 
-/// Matches the current firmware `SystemStateJson::build()` payload exactly.
+/// Matches a real, live `state.system` payload captured directly from a
+/// running Central node over MQTT (HiveMQ Cloud broker, TLS,
+/// `kilowatts/v1/state`) — not inferred from documentation. `powerFlow` has
+/// no validity flag on the wire; presence of `P_budget` is the signal a
+/// plan has been configured. There is no `connectivity`, `time` or
+/// `diagnostics` object at the system level — `lastOptimizationEpochSeconds`
+/// is a top-level sibling of `battery`/`powerFlow`.
 const _wirePayload = {
-  'schemaVersion': 2,
+  'schemaVersion': 5,
   'battery': {
-    'sensorConfigured': true,
-    'nominalVoltageVolts': 12.0,
-    'capacityAmpHours': 100.0,
-    'ratedEnergyWattHours': 1200.0,
-    'storedEnergyWattHours': 918.0,
-    'usableEnergyWattHours': 678.0,
-    'voltageVolts': 12.6,
-    'currentAmps': 8.0,
-    'currentBatteryOutputPowerWatts': 100.8,
-    'measurementSource': 'HARDWARE',
-    'stateOfChargePercent': 76.5,
+    'sensorConfigured': false,
+    'nominalVoltageVolts': 15.0,
+    'capacityAmpHours': 300.0,
+    'ratedEnergyWattHours': 4500.0,
+    'storedEnergyWattHours': 1533.942,
+    'usableEnergyWattHours': 633.942,
+    'voltageVolts': 13.0,
+    'currentAmps': 9.231,
+    'P_measured': 120.003,
+    'measurementSource': 'SIMULATED',
+    'stateOfChargePercent': 34.088,
     'stateOfChargeValid': true,
     'stateOfChargeSource': 'COULOMB_COUNTING',
     'batteryReserveReached': false,
     'requiredRuntimeConfigured': true,
     'requiredRuntimeHours': 4.0,
-    'remainingRuntimeHours': 3.4,
-    'estimatedRuntimeHours': 5.1,
+    'remainingRuntimeHours': 3.694,
+    'estimatedRuntimeHours': 5.283,
     'runtimeEstimateValid': true,
-    'maximumPowerForRequiredRuntimeWatts': 169.5,
     'requiredRuntimeAchievable': true,
   },
   'powerFlow': {
-    'powerFlowValid': true,
-    'batteryMaximumPowerWatts': 180.0,
-    'mainMaximumPowerWatts': 200.0,
-    'fixedOnPowerWatts': 12.0,
-    'automaticPowerBudgetWatts': 150.0,
-    'selectedAutoLoadPowerWatts': 65.0,
-    'remainingAutomaticBudgetWatts': 85.0,
+    'P_budget': 200.0,
+    'P_reserve': 20.0,
+    'P_fixed': 60.0,
+    'P_auto_available': 111.645,
+    'P_auto': 60.0,
+    'P_remaining': 80.0,
   },
-  'connectivity': {
-    'wifiConnected': true,
-    'wifiState': 'CONNECTED',
-    'mqttConnected': true,
-  },
-  'time': {
-    'valid': true,
-    'source': 'NTP',
-    'lastOptimizationEpochSeconds': 1700000000,
-  },
-  'diagnostics': {'pinCommandErrorCount': 0},
+  'lastOptimizationEpochSeconds': 1788184231,
 };
 
 void main() {
@@ -54,51 +48,52 @@ void main() {
     test('reads fields from the current firmware wire shape', () {
       final state = SystemStateModel.fromJson(_wirePayload);
 
-      expect(state.batteryVoltage, 12.6);
-      expect(state.batteryCurrent, 8.0);
-      expect(state.batterySocPercent, 76.5);
-      expect(state.batterySensorConfigured, isTrue);
-      expect(state.batteryCapacityAmpHours, 100.0);
-      expect(state.batteryNominalVoltageV, 12.0);
+      expect(state.batteryVoltage, 13.0);
+      expect(state.batteryCurrent, 9.231);
+      expect(state.batterySocPercent, 34.088);
+      expect(state.batterySensorConfigured, isFalse);
+      expect(state.batteryCapacityAmpHours, 300.0);
+      expect(state.batteryNominalVoltageV, 15.0);
+      expect(state.stateOfChargeValid, isTrue);
+      expect(state.stateOfChargeSource, 'COULOMB_COUNTING');
+      expect(state.batteryReserveReached, isFalse);
       expect(state.requiredRuntimeConfigured, isTrue);
       expect(state.requiredRuntimeHours, 4.0);
-      expect(state.estimatedTotalLoadPowerW, 77.0); // 12 W fixed + 65 W auto
-      expect(state.availablePowerW, 150.0);
-      expect(state.fixedLoadPowerW, 12.0);
-      expect(state.autoLoadPowerW, 65.0);
-      expect(state.remainingPowerW, 85.0);
-      expect(state.committedPowerW, 12.0);
-      expect(state.wifiConnected, true);
-      expect(state.wifiState, 'CONNECTED');
-      expect(state.mqttConnected, true);
-      expect(state.timeValid, true);
-      expect(state.timeSource, 'NTP');
-      expect(state.sensorInputSource, 'HARDWARE');
-      expect(state.faultCount, 0);
+      expect(state.remainingRuntimeHours, 3.694);
+      expect(state.estimatedRuntimeHours, 5.283);
+      expect(state.runtimeEstimateValid, isTrue);
+      expect(state.requiredRuntimeAchievable, isTrue);
+      expect(state.powerBudgetWatts, 200.0);
+      expect(state.powerReserveWatts, 20.0);
+      expect(state.estimatedTotalLoadPowerW, 120.0); // 60 W fixed + 60 W auto
+      expect(state.sustainablePowerW, 111.645);
+      expect(state.availablePowerW, 111.645);
+      expect(state.fixedLoadPowerW, 60.0);
+      expect(state.autoLoadPowerW, 60.0);
+      expect(state.remainingPowerW, 80.0);
+      expect(state.committedPowerW, 60.0);
+      expect(state.sensorInputSource, 'SIMULATED');
 
-      // The firmware does not currently publish these fields. They must stay
-      // null rather than being fabricated by the client.
+      // Firmware does not currently publish these at the system level. They
+      // must stay null rather than being fabricated by the client.
+      expect(state.wifiConnected, isNull);
+      expect(state.mqttConnected, isNull);
+      expect(state.timeValid, isNull);
       expect(state.operatingEnvironment, isNull);
       expect(state.developmentSessionActive, isNull);
+      expect(state.faultCount, isNull);
       expect(state.faultSummary, isNull);
     });
 
     test('derives batteryPowerW from voltage * current', () {
       final state = SystemStateModel.fromJson(_wirePayload);
-      expect(state.batteryPowerW, closeTo(12.6 * 8.0, 0.0001));
+      expect(state.batteryPowerW, closeTo(13.0 * 9.231, 0.0001));
     });
 
     test(
       'lastOptimizationEpochSeconds == 0 parses to null, not epoch 1970',
       () {
-        final json = {
-          ..._wirePayload,
-          'time': {
-            'valid': false,
-            'source': 'NONE',
-            'lastOptimizationEpochSeconds': 0,
-          },
-        };
+        final json = {..._wirePayload, 'lastOptimizationEpochSeconds': 0};
         final state = SystemStateModel.fromJson(json);
         expect(state.lastOptimizationAt, isNull);
       },
@@ -117,31 +112,33 @@ void main() {
     });
 
     test(
-      'powerFlowValid: false nulls out every powerFlow-derived field, even though the raw JSON has non-null-looking zeros',
+      'a missing P_budget nulls out every powerFlow-derived field, even '
+      'though the raw JSON has other non-null-looking zeros',
       () {
         final json = {
           ..._wirePayload,
           'powerFlow': {
-            'powerFlowValid': false,
-            'batteryMaximumPowerWatts': 0.0,
-            'mainMaximumPowerWatts': 0.0,
-            'fixedOnPowerWatts': 0.0,
-            'automaticPowerBudgetWatts': 0.0,
-            'selectedAutoLoadPowerWatts': 0.0,
-            'remainingAutomaticBudgetWatts': 0.0,
+            'P_reserve': 0.0,
+            'P_fixed': 0.0,
+            'P_auto_available': 0.0,
+            'P_auto': 0.0,
+            'P_remaining': 0.0,
           },
         };
         final state = SystemStateModel.fromJson(json);
 
+        expect(state.powerBudgetWatts, isNull);
+        expect(state.powerReserveWatts, isNull);
         expect(state.estimatedTotalLoadPowerW, isNull);
+        expect(state.sustainablePowerW, isNull);
         expect(state.availablePowerW, isNull);
         expect(state.fixedLoadPowerW, isNull);
         expect(state.autoLoadPowerW, isNull);
         expect(state.remainingPowerW, isNull);
         expect(state.committedPowerW, isNull);
 
-        // battery.* fields are unaffected by powerFlowValid.
-        expect(state.batterySocPercent, 76.5);
+        // battery.* fields are unaffected by powerFlow's own state.
+        expect(state.batterySocPercent, 34.088);
       },
     );
   });

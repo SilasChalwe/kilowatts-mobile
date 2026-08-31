@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   AuthService({FirebaseAuth? firebaseAuth, this._firestore})
@@ -19,7 +20,7 @@ class AuthService {
       password: password,
     );
     final user = credential.user;
-    if (user != null) await _ensureProfile(user);
+    if (user != null) await _ensureProfileBestEffort(user);
   }
 
   Future<void> createAccount({
@@ -38,9 +39,21 @@ class AuthService {
     }
 
     await user.updateDisplayName(fullName.trim());
-    await _ensureProfile(user, fullName: fullName.trim());
+    await _ensureProfileBestEffort(user, fullName: fullName.trim());
     await user.sendEmailVerification();
     await user.reload();
+  }
+
+  /// Syncing the Firestore profile doc is bookkeeping, not authentication —
+  /// a failure here (e.g. a transient permission-denied) must never make an
+  /// otherwise-successful sign-in/sign-up look like it failed. Role/profile
+  /// data is re-read separately right after via [AccessControlService].
+  Future<void> _ensureProfileBestEffort(User user, {String? fullName}) async {
+    try {
+      await _ensureProfile(user, fullName: fullName);
+    } catch (error) {
+      debugPrint('AuthService: profile sync failed for ${user.uid}: $error');
+    }
   }
 
   Future<void> _ensureProfile(User user, {String? fullName}) async {

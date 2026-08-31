@@ -17,6 +17,15 @@ class SocIndicator extends StatelessWidget {
       child: Column(
         children: [
           SectionRow(
+            label: 'State of charge',
+            value: Formatters.percent(isLive ? state.batterySocPercent : null),
+          ),
+          SectionRow(
+            label: 'Source',
+            value: (isLive ? state.sensorInputSource : null) ?? 'Unavailable',
+          ),
+          const Divider(),
+          SectionRow(
             label: 'Battery voltage',
             value: Formatters.voltage(isLive ? state.batteryVoltage : null),
           ),

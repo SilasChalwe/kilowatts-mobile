@@ -1,16 +1,15 @@
 import '../../../core/utils/json_parsing.dart';
 
-/// Extended device diagnostics, matching `TopologyTree::appendDiagnosticsJson`
-/// exactly (`lib/NodeManager/Central/TopologyTree.cpp`). Every field is
-/// optional — firmware only publishes what it actually measures, and the UI
-/// must show "Unavailable" rather than invent a value for anything missing
-/// here.
-///
-/// [buildId], [siliconRevision], [cpuFrequencyMhz] and [chipTemperatureC]
-/// are not currently emitted by firmware's diagnostics JSON at all (it only
-/// sends firmwareVersion/chipModel/freeHeapBytes/minFreeHeapBytes/
-/// flashSizeBytes/psramSizeBytes/cpuCores/resetReason) — they stay null
-/// until a firmware change adds them, not because of a parsing bug.
+/// Extended device diagnostics, matching the `diagnostics` object inside
+/// each entry of `state.nodes.nodes[]` exactly (verified against a live
+/// broker capture): `freeHeapBytes`, `minFreeHeapBytes`, `flashSizeBytes`,
+/// `psramSizeBytes`, `siliconRevision`, `cpuCores`, `cpuFrequencyMhz`,
+/// `resetReason`, `temperatureAvailable`, `temperatureCelsius` — all
+/// camelCase on the wire, not snake_case. `firmwareVersion` and `chipModel`
+/// are published as siblings of `diagnostics` on the node object itself, not
+/// inside it, so they are passed in separately by [NodeModel.fromJson].
+/// [buildId] is not published by firmware at all and stays null until a
+/// firmware change adds it.
 class NodeDiagnosticsModel {
   const NodeDiagnosticsModel({
     this.firmwareVersion,
@@ -24,6 +23,7 @@ class NodeDiagnosticsModel {
     this.freeHeapBytes,
     this.minFreeHeapBytes,
     this.resetReason,
+    this.temperatureAvailable,
     this.chipTemperatureC,
     this.faults = const [],
   });
@@ -39,27 +39,38 @@ class NodeDiagnosticsModel {
   final int? freeHeapBytes;
   final int? minFreeHeapBytes;
   final String? resetReason;
+  final bool? temperatureAvailable;
 
   /// Device/chip die temperature — explicitly not ambient room temperature.
+  /// Only meaningful when [temperatureAvailable] is true.
   final double? chipTemperatureC;
   final List<String> faults;
 
-  factory NodeDiagnosticsModel.fromJson(Map<String, dynamic>? json) {
-    if (json == null) return const NodeDiagnosticsModel();
+  factory NodeDiagnosticsModel.fromJson(
+    Map<String, dynamic>? json, {
+    String? firmwareVersion,
+    String? chipModel,
+  }) {
+    if (json == null) {
+      return NodeDiagnosticsModel(
+        firmwareVersion: firmwareVersion,
+        chipModel: chipModel,
+      );
+    }
     final faults = json['faults'];
     return NodeDiagnosticsModel(
-      firmwareVersion: json.stringOrNull('firmware_version'),
-      buildId: json.stringOrNull('build_id'),
-      chipModel: json.stringOrNull('chip_model'),
-      siliconRevision: json.intOrNull('silicon_revision'),
-      cpuCores: json.intOrNull('cpu_cores'),
-      cpuFrequencyMhz: json.intOrNull('cpu_frequency_mhz'),
-      flashSizeBytes: json.intOrNull('flash_size_bytes'),
-      psramSizeBytes: json.intOrNull('psram_size_bytes'),
-      freeHeapBytes: json.intOrNull('free_heap_bytes'),
-      minFreeHeapBytes: json.intOrNull('min_free_heap_bytes'),
-      resetReason: json.stringOrNull('reset_reason'),
-      chipTemperatureC: json.doubleOrNull('chip_temperature_c'),
+      firmwareVersion: firmwareVersion,
+      chipModel: chipModel,
+      siliconRevision: json.intOrNull('siliconRevision'),
+      cpuCores: json.intOrNull('cpuCores'),
+      cpuFrequencyMhz: json.intOrNull('cpuFrequencyMhz'),
+      flashSizeBytes: json.intOrNull('flashSizeBytes'),
+      psramSizeBytes: json.intOrNull('psramSizeBytes'),
+      freeHeapBytes: json.intOrNull('freeHeapBytes'),
+      minFreeHeapBytes: json.intOrNull('minFreeHeapBytes'),
+      resetReason: json.stringOrNull('resetReason'),
+      temperatureAvailable: json.boolOrNull('temperatureAvailable'),
+      chipTemperatureC: json.doubleOrNull('temperatureCelsius'),
       faults: faults is List ? faults.whereType<String>().toList() : const [],
     );
   }

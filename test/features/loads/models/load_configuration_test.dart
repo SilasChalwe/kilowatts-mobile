@@ -22,23 +22,26 @@ void main() {
       ),
     );
 
+    // Flat shape required by `MqttManager::handleLoadCommandMessage`'s
+    // `action == "add"` branch — nodeMac/relayPin/name/power/priority/mode/
+    // powerType/activeHigh/schedule are all top-level siblings, not nested
+    // under a `load` object. `type`/`commandId`/`action` are added by
+    // MqttService when it wraps this payload for publish.
     expect(configuration.toCommandPayload(), {
       'nodeMac': 'AA:BB:CC:DD:EE:FF',
-      'load': {
-        'name': 'Pump',
-        'relayPin': 16,
-        'relayActiveHigh': false,
-        'mode': 'AUTO_OFF',
-        'powerType': 'DC',
-        'priority': 8,
-        'powerRatingWatts': 30.0,
-        'schedule': {
-          'enabled': true,
-          'startHour': 6,
-          'startMinute': 0,
-          'endHour': 8,
-          'endMinute': 0,
-        },
+      'relayPin': 16,
+      'name': 'Pump',
+      'power': 30.0,
+      'priority': 8,
+      'mode': 'AUTO_OFF',
+      'powerType': 'DC',
+      'activeHigh': false,
+      'schedule': {
+        'enabled': true,
+        'startHour': 6,
+        'startMinute': 0,
+        'endHour': 8,
+        'endMinute': 0,
       },
     });
   });
@@ -55,11 +58,10 @@ void main() {
       powerType: LoadPowerType.ac,
     );
 
-    final load =
-        configuration.toCommandPayload()['load'] as Map<String, dynamic>;
-    expect(load['powerType'], 'AC');
-    expect(load['schedule'], {'enabled': false});
-    expect(load.containsKey('nominalVoltageVolts'), isFalse);
-    expect(load.containsKey('startupWatts'), isFalse);
+    final payload = configuration.toCommandPayload();
+    expect(payload['powerType'], 'AC');
+    expect(payload['schedule'], {'enabled': false});
+    expect(payload.containsKey('nominalVoltageVolts'), isFalse);
+    expect(payload.containsKey('startupWatts'), isFalse);
   });
 }

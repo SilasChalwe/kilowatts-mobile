@@ -6,6 +6,8 @@ import '../../../core/services/mqtt_presence_store.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/app_toast.dart';
+import '../../../core/widgets/confirmation_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
@@ -58,12 +60,18 @@ class InstallerCommissioningScreen extends StatelessWidget {
     final config = await showMqttConfigurationDialog(
       context,
       current ??
-          MqttConfig(
+          // Firmware uses one fixed namespace, `kilowatts/v1` — it has no
+          // per-installation topic suffix (verified against a live broker
+          // capture and `lib/MqttManager/README.md` in the firmware repo).
+          // A per-installation suffix here would silently subscribe under a
+          // namespace Central never publishes to.
+          const MqttConfig(
             host: '',
             port: 8883,
             useTls: true,
-            topicNamespace: 'kilowatts/v1/$installationId',
+            topicNamespace: 'kilowatts/v1',
           ),
+      onTestConnection: appState.testMqttConnection,
     );
     if (config == null || !context.mounted) return;
     try {
@@ -112,12 +120,24 @@ class InstallerCommissioningScreen extends StatelessWidget {
     String text, [
     bool error = false,
   ]) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: error ? AppColors.error : null,
-        content: Text(text),
-      ),
+    AppToast.show(
+      context,
+      message: text,
+      tone: error ? AppToastTone.error : AppToastTone.success,
     );
+  }
+
+  Future<void> _signOut(BuildContext context) async {
+    final appState = AppStateScope.of(context);
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Sign out?',
+      message: 'You will need to sign in again to manage installations.',
+      confirmLabel: 'Sign out',
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+    await appState.signOut();
   }
 
   @override
@@ -129,7 +149,7 @@ class InstallerCommissioningScreen extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: 'Sign out',
-            onPressed: appState.signOut,
+            onPressed: () => _signOut(context),
             icon: const Icon(Icons.logout_rounded),
           ),
         ],
@@ -308,18 +328,20 @@ class _RoleDialogState extends State<_RoleDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Assign role'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final role in KilowattsRole.values)
-            RadioListTile<KilowattsRole>(
-              contentPadding: EdgeInsets.zero,
-              title: Text(_roleLabel(role)),
-              value: role,
-              groupValue: _role,
-              onChanged: (value) => setState(() => _role = value!),
-            ),
-        ],
+      content: RadioGroup<KilowattsRole>(
+        groupValue: _role,
+        onChanged: (value) => setState(() => _role = value!),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final role in KilowattsRole.values)
+              RadioListTile<KilowattsRole>(
+                contentPadding: EdgeInsets.zero,
+                title: Text(_roleLabel(role)),
+                value: role,
+              ),
+          ],
+        ),
       ),
       actions: [
         TextButton(

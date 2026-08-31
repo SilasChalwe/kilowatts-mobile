@@ -7,10 +7,12 @@ import 'package:mqtt_client/mqtt_client.dart';
 import '../../features/alerts/models/alert_model.dart';
 import '../../features/loads/models/load_configuration.dart';
 import '../../features/loads/models/load_model.dart';
+import '../../features/system/models/node_model.dart';
 import '../../features/system/models/system_state_model.dart';
 import '../../features/system/models/system_node_model.dart';
 import '../../features/system/models/topology_model.dart';
 import '../constants/app_constants.dart';
+import '../utils/json_parsing.dart';
 import 'command_outcome.dart';
 import 'local_state_service.dart';
 import 'mqtt_client_adapter.dart';
@@ -307,57 +309,46 @@ class MqttService {
   }
 
   void _routeMessage(String topic, Map<String, dynamic> payload) {
-    if (topic == _topics.stateSystem) {
+    if (topic == _topics.state) {
       _markCentralActive();
-      final state = SystemStateModel.fromJson(payload);
-      _systemStateController.add(state);
-      cache?.cacheSystemState(payload, scope: _cacheScope);
+      _routeState(payload);
       return;
     }
-    if (topic == _topics.stateTree) {
-      _markCentralActive();
-      _topologyController.add(TopologyModel.fromJson(payload));
-      return;
-    }
-    if (topic == _topics.stateLoads) {
-      _markCentralActive();
-      final loadsJson =
-          (payload['loads'] as List?)
-              ?.whereType<Map>()
-              .map((e) => e.cast<String, dynamic>())
-              .toList() ??
-          const <Map<String, dynamic>>[];
-      final loads = loadsJson.map(LoadModel.fromJson).toList();
-      _loadsController.add(loads);
-      cache?.cacheLoads(loadsJson, scope: _cacheScope);
-      return;
-    }
-    if (topic == _topics.stateNodes) {
-      _markCentralActive();
-      final nodes =
-          (payload['nodes'] as List?)
-              ?.whereType<Map>()
-              .map((e) => e.cast<String, dynamic>())
-              .map(SystemNodeModel.fromJson)
-              .toList(growable: false) ??
-          const <SystemNodeModel>[];
-      _systemNodesController.add(nodes);
-      return;
-    }
-    if (topic == _topics.events) {
+    if (topic == _topics.alert) {
       _markCentralActive();
       _alertController.add(AlertModel.fromJson(payload));
       return;
     }
-    if (topic == _topics.alerts) {
-      _markCentralActive();
-      _alertController.add(AlertModel.fromJson(payload));
-      return;
-    }
-    if (topic == _topics.acks) {
+    if (topic == _topics.ack) {
       _markCentralActive();
       _resolveAck(payload);
     }
+  }
+
+  /// Splits the one combined `state` payload
+  /// (`{"system":{},"loads":{},"nodes":{}}`) into the three streams the rest
+  /// of the app consumes, and derives [TopologyModel] from the flat node
+  /// list rather than a separate (nonexistent) tree topic.
+  void _routeState(Map<String, dynamic> payload) {
+    final systemJson = payload.mapOrNull('system');
+    if (systemJson != null) {
+      final state = SystemStateModel.fromJson(systemJson);
+      _systemStateController.add(state);
+      cache?.cacheSystemState(systemJson, scope: _cacheScope);
+    }
+
+    final loadsJson = (payload.mapOrNull('loads') ?? const {}).listOfMaps('loads');
+    final loads = loadsJson.map(LoadModel.fromJson).toList(growable: false);
+    _loadsController.add(loads);
+    cache?.cacheLoads(loadsJson, scope: _cacheScope);
+
+    final nodesJson = (payload.mapOrNull('nodes') ?? const {}).listOfMaps('nodes');
+    final systemNodes = nodesJson.map(SystemNodeModel.fromJson).toList(growable: false);
+    _systemNodesController.add(systemNodes);
+
+    _topologyController.add(
+      TopologyModel(nodes: NodeModel.listFromState(nodesJson, loads)),
+    );
   }
 
   void _resolveAck(Map<String, dynamic> payload) {
@@ -393,8 +384,9 @@ class MqttService {
     return commandId;
   }
 
-  /// Updates priority/mode/schedule of an existing load using the exact
-  /// firmware LoadCommandRequest wire shape.
+  /// Updates priority/mode/schedule of an existing load. Wire shape and
+  /// `type`/`action` match `MqttManager::handleLoadCommandMessage`'s
+  /// `action == "update"` branch exactly.
   Future<CommandOutcome> sendLoadCommand({
     required String nodeMac,
     required int relayPin,
@@ -405,7 +397,9 @@ class MqttService {
   }) {
     final commandId = _nextCommandId();
     final payload = <String, dynamic>{
+      'type': 'load',
       'commandId': commandId,
+      'action': 'update',
       'nodeMac': nodeMac,
       'relayPin': relayPin,
       if (mode != null && requestedState != null)
@@ -413,7 +407,7 @@ class MqttService {
       'priority': ?priority,
       if (schedule != null) 'schedule': schedule.toWireJson(),
     };
-    return _publishCommand(_topics.commandsLoad, commandId, payload);
+    return _publishCommand(_topics.command, commandId, payload);
   }
 
   String _wireMode(LoadMode mode, bool on) {
@@ -421,46 +415,104 @@ class MqttService {
     return on ? 'AUTO_ON' : 'AUTO_OFF';
   }
 
+  /// Creates a Load, or fully replaces an existing one at the same
+  /// `nodeMac`/`relayPin`. Firmware's `action: "add"`
+  /// (`ConfigCommandAction::CONFIGURE_LOAD`) is the only way to set a Load's
+  /// full configuration (name/power/priority/powerType/activeHigh/schedule)
+  /// at once — there is no separate "edit" action.
   Future<CommandOutcome> configureLoad(LoadConfiguration configuration) {
-    return _sendConfigCommand({
-      'action': 'CONFIGURE_LOAD',
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.command, commandId, {
+      'type': 'load',
+      'commandId': commandId,
+      'action': 'add',
       ...configuration.toCommandPayload(),
-    });
+    }, waitForFinalAfterAccepted: true);
   }
 
-  /// Removes a single Load's registration from its owning node. Matches
-  /// firmware's REMOVE_LOAD wire shape exactly: a top-level `relayPin`, not
-  /// nested under a `load` object (unlike CONFIGURE_LOAD).
+  /// Removes a single Load's registration from its owning node.
   Future<CommandOutcome> removeLoad({
     required String nodeMac,
     required int relayPin,
   }) {
-    return _sendConfigCommand({
-      'action': 'REMOVE_LOAD',
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.command, commandId, {
+      'type': 'load',
+      'commandId': commandId,
+      'action': 'delete',
       'nodeMac': nodeMac,
       'relayPin': relayPin,
-    });
-  }
-
-  /// Homeowner-safe battery reserve change. Deliberately published on its
-  /// own topic (not `commands/config`) so a homeowner's broker credentials
-  /// can be scoped to it without also granting commissioning/load-config/
-  /// battery-sensor access.
-  Future<CommandOutcome> setBatteryReserve(double reserveSoCPercent) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsReserve, commandId, {
-      'commandId': commandId,
-      'action': 'SET_BATTERY_RESERVE',
-      'reserveSoCPercent': reserveSoCPercent,
-    });
-  }
-
-  Future<CommandOutcome> _sendConfigCommand(Map<String, dynamic> payload) {
-    final commandId = _nextCommandId();
-    return _publishCommand(_topics.commandsConfig, commandId, {
-      'commandId': commandId,
-      ...payload,
     }, waitForFinalAfterAccepted: true);
+  }
+
+  /// Sets the whole power plan at once. Firmware requires `budget`,
+  /// `reserve` and `minSoc` together on every `battery`/`set` command — there
+  /// is no partial/reserve-only update
+  /// (`MqttManager::handleBatteryCommandMessage` rejects the command
+  /// otherwise). `runtime` is optional; omitting it clears any previously
+  /// configured runtime target.
+  Future<CommandOutcome> setBatteryPlan({
+    required double budget,
+    required double reserve,
+    required double minSoc,
+    double? runtime,
+  }) {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.command, commandId, {
+      'type': 'battery',
+      'commandId': commandId,
+      'action': 'set',
+      'budget': budget,
+      'reserve': reserve,
+      'minSoc': minSoc,
+      'runtime': ?runtime,
+    });
+  }
+
+  /// Switches the measurement source between the real INA219 sensor and
+  /// simulation, matching `MqttManager::handleSensorCommandMessage`'s
+  /// `action: "ina219"` / `action: "sim"`.
+  Future<CommandOutcome> setSensorMode({required bool useHardwareSensor}) {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.command, commandId, {
+      'type': 'sensor',
+      'commandId': commandId,
+      'action': useHardwareSensor ? 'ina219' : 'sim',
+    });
+  }
+
+  /// Supplies simulated measurements while in simulation mode. Firmware
+  /// requires voltage and current together (or neither), and treats `soc`
+  /// as independently optional — at least one of the two must be present.
+  Future<CommandOutcome> setSimulatedValues({
+    double? voltage,
+    double? current,
+    double? soc,
+  }) {
+    assert(
+      (voltage == null) == (current == null),
+      'voltage and current must be supplied together',
+    );
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.command, commandId, {
+      'type': 'sensor',
+      'commandId': commandId,
+      'action': 'values',
+      'voltage': ?voltage,
+      'current': ?current,
+      'soc': ?soc,
+    });
+  }
+
+  /// Requests an optimization cycle right now, instead of waiting for
+  /// Central's next scheduled interval.
+  Future<CommandOutcome> triggerOptimizeNow() {
+    final commandId = _nextCommandId();
+    return _publishCommand(_topics.command, commandId, {
+      'type': 'system',
+      'commandId': commandId,
+      'action': 'optimize',
+    });
   }
 
   Future<CommandOutcome> _publishCommand(
