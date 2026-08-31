@@ -80,13 +80,14 @@ class _LoadStateControlState extends State<LoadStateControl> {
                         isOn ? 'Requested ON' : 'Requested OFF',
                         style: AppTextStyles.label,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        load.confirmedStateValid && load.confirmedState != null
-                            ? 'Relay feedback: ${load.confirmedState! ? 'ON' : 'OFF'}'
-                            : 'Central accepted state is shown; downstream appliance feedback is not available.',
-                        style: AppTextStyles.caption,
-                      ),
+                      if (load.confirmedStateValid &&
+                          load.confirmedState != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Relay feedback: ${load.confirmedState! ? 'ON' : 'OFF'}',
+                          style: AppTextStyles.caption,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -136,13 +137,13 @@ class _LoadStateControlState extends State<LoadStateControl> {
                   'Automatic · ${isOn ? 'Selected by Best-First Search' : 'Currently deferred'}',
                   style: AppTextStyles.label,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  !isOn && load.rejectionReason != null
-                      ? load.rejectionReason!.friendlyText
-                      : 'Priority, schedule and available power determine this load automatically.',
-                  style: AppTextStyles.caption,
-                ),
+                if (!isOn && load.rejectionReason != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    load.rejectionReason!.friendlyText,
+                    style: AppTextStyles.caption,
+                  ),
+                ],
               ],
             ),
           ),

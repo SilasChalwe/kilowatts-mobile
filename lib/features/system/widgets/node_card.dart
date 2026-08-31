@@ -44,7 +44,7 @@ class NodeCard extends StatelessWidget {
                     Text(node.displayName, style: AppTextStyles.label),
                     if (!isCentral)
                       Text(
-                        '${Formatters.hopCount(node.hopCount)} · ${node.branchIds.length} loads',
+                        '${Formatters.hopCount(node.hopCount)} · ${node.loads.length} loads',
                         style: AppTextStyles.caption,
                       ),
                   ],

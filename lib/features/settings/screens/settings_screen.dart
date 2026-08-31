@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/app_state/app_state_scope.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/routing/app_routes.dart';
+import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -50,7 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _content(BuildContext context) {
     final appState = AppStateScope.of(context);
     final authUser = appState.currentUser;
-    final config = appState.mqttConfig;
 
     return SingleChildScrollView(
       child: ResponsiveContent(
@@ -66,7 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : null;
             final fullName = loadedProfile?.fullName;
             final phoneNumber = loadedProfile?.phoneNumber;
-            final installationId = loadedProfile?.installationId;
+            final userUid = loadedProfile?.uid ?? authUser?.uid;
             final role = loadedProfile?.role;
 
             final account = SectionCard(
@@ -123,14 +123,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: loadedProfile != null
                         ? phoneNumber ?? 'Not recorded'
                         : snapshot.hasError
-                            ? 'Profile unavailable'
-                            : 'Loading…',
+                        ? 'Profile unavailable'
+                        : 'Loading…',
                   ),
-                  if (installationId != null)
-                    SectionRow(
-                      label: 'Installation',
-                      value: installationId,
-                    ),
+                  if (userUid != null)
+                    SectionRow(label: 'User ID', value: userUid),
                   SectionRow(
                     label: 'Email verification',
                     valueWidget: StatusBadge(
@@ -151,19 +148,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  _SettingsRow(
-                    icon: Icons.router_outlined,
-                    title: 'System connection',
-                    value: config.isConfigured
-                        ? '${config.host}:${config.port}'
-                        : 'Not configured',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SystemConnectionSettingsScreen(),
+                  if (role == KilowattsRole.homeowner)
+                    ValueListenableBuilder<MqttConnectionStatus>(
+                      valueListenable: appState.connectionStatus,
+                      builder: (context, status, _) => _SettingsRow(
+                        icon: Icons.router_outlined,
+                        title: 'System connection',
+                        value: _connectionStatusLabel(status),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const SystemConnectionSettingsScreen(),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const Divider(height: 1),
                   const _SettingsRow(
                     icon: Icons.info_outline_rounded,
                     title: 'About Kilowatts',
@@ -221,6 +220,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  static String _connectionStatusLabel(MqttConnectionStatus status) {
+    switch (status) {
+      case MqttConnectionStatus.connected:
+        return 'Connected';
+      case MqttConnectionStatus.connecting:
+        return 'Connecting';
+      case MqttConnectionStatus.reconnecting:
+        return 'Reconnecting';
+      case MqttConnectionStatus.authenticationFailure:
+        return 'Authentication failed';
+      case MqttConnectionStatus.tlsFailure:
+        return 'Security connection failed';
+      case MqttConnectionStatus.networkFailure:
+        return 'Connection failed';
+      case MqttConnectionStatus.notConfigured:
+        return 'Not configured';
+      case MqttConnectionStatus.disconnected:
+        return 'Disconnected';
+    }
   }
 
   static String _roleLabel(KilowattsRole role) {
@@ -311,7 +331,9 @@ class _SettingsRow extends StatelessWidget {
               if (onTap != null)
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: destructive ? AppColors.error : AppColors.textSecondary,
+                  color: destructive
+                      ? AppColors.error
+                      : AppColors.textSecondary,
                 ),
             ],
           ),

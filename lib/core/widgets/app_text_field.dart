@@ -42,6 +42,7 @@ class AppTextField extends StatelessWidget {
         const SizedBox(height: AppSpacing.xs),
         TextFormField(
           controller: controller,
+          style: AppTextStyles.body,
           validator: validator,
           keyboardType: keyboardType,
           textInputAction: textInputAction,

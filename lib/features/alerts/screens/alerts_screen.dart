@@ -111,10 +111,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     await AppStateScope.of(context).deleteAlert(alert.id);
   }
 
-  Future<void> _handleAction(
-    AlertModel alert,
-    AlertCardAction action,
-  ) async {
+  Future<void> _handleAction(AlertModel alert, AlertCardAction action) async {
     final appState = AppStateScope.of(context);
     switch (action) {
       case AlertCardAction.open:
@@ -164,7 +161,10 @@ class _AlertsScreenState extends State<AlertsScreen> {
                           if (unread > 0)
                             OutlinedButton.icon(
                               onPressed: appState.acknowledgeAllAlerts,
-                              icon: const Icon(Icons.done_all_rounded, size: 18),
+                              icon: const Icon(
+                                Icons.done_all_rounded,
+                                size: 18,
+                              ),
                               label: const Text('Mark all read'),
                             ),
                         ],
@@ -180,7 +180,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             ChoiceChip(
                               label: Text(_label(filter)),
                               selected: _filter == filter,
-                              onSelected: (_) => setState(() => _filter = filter),
+                              onSelected: (_) =>
+                                  setState(() => _filter = filter),
                             ),
                         ],
                       ),
@@ -194,16 +195,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         title: alerts.isEmpty
                             ? 'No notifications'
                             : 'Nothing in this view',
-                        message: alerts.isEmpty
-                            ? 'New system notifications will appear here.'
-                            : 'Choose another notification filter.',
                       )
                     else
                       Column(
                         children: [
-                          for (var index = 0;
-                              index < filtered.length;
-                              index++) ...[
+                          for (
+                            var index = 0;
+                            index < filtered.length;
+                            index++
+                          ) ...[
                             AlertCard(
                               alert: filtered[index],
                               onOpen: () => _openAlert(filtered[index]),

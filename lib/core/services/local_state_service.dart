@@ -2,8 +2,6 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/telemetry_point.dart';
-
 /// Local, on-device persistence only. Live embedded-system state always comes
 /// from MQTT; locally cached installer configuration is labelled as such in
 /// the UI and is never presented as fresh Central telemetry.
@@ -14,44 +12,61 @@ class LocalStateService {
   static const _lastSyncedAtKey = 'kilowatts.last_synced_at';
   static const _nodeNameOverridesKey = 'kilowatts.node_name_overrides';
   static const _alertsKey = 'kilowatts.alerts';
-  static const _socHistoryKey = 'kilowatts.history.soc';
-  static const _batteryPowerHistoryKey = 'kilowatts.history.battery_power';
-  static const _activeLoadPowerHistoryKey =
-      'kilowatts.history.active_load_power';
   static const _installerSafetyConfigKey = 'kilowatts.installer.safety_config';
-  static const _installerBatteryConfigKey = 'kilowatts.installer.battery_config';
+  static const _installerBatteryConfigKey =
+      'kilowatts.installer.battery_config';
   static const _installerOptimizerIntervalKey =
       'kilowatts.installer.optimizer_interval_seconds';
 
-  Future<bool> isSetupComplete() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_setupCompleteKey) ?? false;
+  String _scopedKey(String key, String? scope) {
+    final value = scope?.trim() ?? '';
+    if (value.isEmpty) return key;
+    return '$key.${base64Url.encode(utf8.encode(value))}';
   }
 
-  Future<void> setSetupComplete(bool complete) async {
+  Future<bool> isSetupComplete({String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_setupCompleteKey, complete);
+    return prefs.getBool(_scopedKey(_setupCompleteKey, scope)) ?? false;
   }
 
-  Future<void> cacheSystemState(Map<String, dynamic> json) async {
+  Future<void> setSetupComplete(bool complete, {String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastSystemStateKey, jsonEncode(json));
-    await prefs.setString(_lastSyncedAtKey, DateTime.now().toIso8601String());
+    await prefs.setBool(_scopedKey(_setupCompleteKey, scope), complete);
   }
 
-  Future<void> cacheLoads(List<Map<String, dynamic>> loads) async {
+  Future<void> cacheSystemState(
+    Map<String, dynamic> json, {
+    String? scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastLoadsKey, jsonEncode(loads));
+    await prefs.setString(
+      _scopedKey(_lastSystemStateKey, scope),
+      jsonEncode(json),
+    );
+    await prefs.setString(
+      _scopedKey(_lastSyncedAtKey, scope),
+      DateTime.now().toIso8601String(),
+    );
   }
 
-  Future<Map<String, dynamic>?> readCachedSystemState() async {
+  Future<void> cacheLoads(
+    List<Map<String, dynamic>> loads, {
+    String? scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    return _readJsonMap(prefs.getString(_lastSystemStateKey));
+    await prefs.setString(_scopedKey(_lastLoadsKey, scope), jsonEncode(loads));
   }
 
-  Future<List<Map<String, dynamic>>?> readCachedLoads() async {
+  Future<Map<String, dynamic>?> readCachedSystemState({String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_lastLoadsKey);
+    return _readJsonMap(
+      prefs.getString(_scopedKey(_lastSystemStateKey, scope)),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>?> readCachedLoads({String? scope}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_scopedKey(_lastLoadsKey, scope));
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw) as List;
@@ -64,21 +79,21 @@ class LocalStateService {
     }
   }
 
-  Future<DateTime?> readLastSyncedAt() async {
+  Future<DateTime?> readLastSyncedAt({String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_lastSyncedAtKey);
+    final raw = prefs.getString(_scopedKey(_lastSyncedAtKey, scope));
     if (raw == null) return null;
     return DateTime.tryParse(raw);
   }
 
-  Future<void> clearSetupState() async {
+  Future<void> clearSetupState({String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_setupCompleteKey);
+    await prefs.remove(_scopedKey(_setupCompleteKey, scope));
   }
 
-  Future<Map<String, String>> readNodeNameOverrides() async {
+  Future<Map<String, String>> readNodeNameOverrides({String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_nodeNameOverridesKey);
+    final raw = prefs.getString(_scopedKey(_nodeNameOverridesKey, scope));
     if (raw == null) return {};
     try {
       return (jsonDecode(raw) as Map).cast<String, String>();
@@ -87,21 +102,31 @@ class LocalStateService {
     }
   }
 
-  Future<void> setNodeNameOverride(String mac, String name) async {
-    final overrides = await readNodeNameOverrides();
+  Future<void> setNodeNameOverride(
+    String mac,
+    String name, {
+    String? scope,
+  }) async {
+    final overrides = await readNodeNameOverrides(scope: scope);
     overrides[mac] = name;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_nodeNameOverridesKey, jsonEncode(overrides));
+    await prefs.setString(
+      _scopedKey(_nodeNameOverridesKey, scope),
+      jsonEncode(overrides),
+    );
   }
 
-  Future<void> cacheAlerts(List<Map<String, dynamic>> alerts) async {
+  Future<void> cacheAlerts(
+    List<Map<String, dynamic>> alerts, {
+    String? scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_alertsKey, jsonEncode(alerts));
+    await prefs.setString(_scopedKey(_alertsKey, scope), jsonEncode(alerts));
   }
 
-  Future<List<Map<String, dynamic>>?> readCachedAlerts() async {
+  Future<List<Map<String, dynamic>>?> readCachedAlerts({String? scope}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_alertsKey);
+    final raw = prefs.getString(_scopedKey(_alertsKey, scope));
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw) as List;
@@ -114,96 +139,71 @@ class LocalStateService {
     }
   }
 
-  Future<void> cacheSocHistory(List<TelemetryPoint> points) =>
-      _writeTelemetryHistory(_socHistoryKey, points);
-
-  Future<void> cacheBatteryPowerHistory(List<TelemetryPoint> points) =>
-      _writeTelemetryHistory(_batteryPowerHistoryKey, points);
-
-  Future<void> cacheActiveLoadPowerHistory(List<TelemetryPoint> points) =>
-      _writeTelemetryHistory(_activeLoadPowerHistoryKey, points);
-
-  Future<List<TelemetryPoint>> readSocHistory() =>
-      _readTelemetryHistory(_socHistoryKey);
-
-  Future<List<TelemetryPoint>> readBatteryPowerHistory() =>
-      _readTelemetryHistory(_batteryPowerHistoryKey);
-
-  Future<List<TelemetryPoint>> readActiveLoadPowerHistory() =>
-      _readTelemetryHistory(_activeLoadPowerHistoryKey);
-
-  Future<void> cacheInstallerSafetyConfig(Map<String, dynamic> values) async {
-    await _writeInstallerSnapshot(_installerSafetyConfigKey, values);
-  }
-
-  Future<Map<String, dynamic>?> readInstallerSafetyConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    return _readJsonMap(prefs.getString(_installerSafetyConfigKey));
-  }
-
-  Future<void> cacheInstallerBatteryConfig(Map<String, dynamic> values) async {
-    await _writeInstallerSnapshot(_installerBatteryConfigKey, values);
-  }
-
-  Future<Map<String, dynamic>?> readInstallerBatteryConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    return _readJsonMap(prefs.getString(_installerBatteryConfigKey));
-  }
-
-  Future<void> cacheInstallerOptimizerIntervalSeconds(int seconds) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_installerOptimizerIntervalKey, seconds);
-  }
-
-  Future<int?> readInstallerOptimizerIntervalSeconds() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_installerOptimizerIntervalKey);
-  }
-
-  Future<void> _writeTelemetryHistory(
-    String key,
-    List<TelemetryPoint> points,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      key,
-      jsonEncode(points.map((point) => point.toJson()).toList()),
+  Future<void> cacheInstallerSafetyConfig(
+    Map<String, dynamic> values, {
+    String? scope,
+  }) async {
+    await _writeInstallerSnapshot(
+      _installerSafetyConfigKey,
+      values,
+      scope: scope,
     );
   }
 
-  Future<List<TelemetryPoint>> _readTelemetryHistory(String key) async {
+  Future<Map<String, dynamic>?> readInstallerSafetyConfig({
+    String? scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(key);
-    if (raw == null) return const [];
-    try {
-      final decoded = jsonDecode(raw) as List;
-      return decoded
-          .whereType<Map>()
-          .map((value) {
-            try {
-              return TelemetryPoint.fromJson(value.cast<String, dynamic>());
-            } catch (_) {
-              return null;
-            }
-          })
-          .whereType<TelemetryPoint>()
-          .toList(growable: false);
-    } catch (_) {
-      return const [];
-    }
+    return _readJsonMap(
+      prefs.getString(_scopedKey(_installerSafetyConfigKey, scope)),
+    );
+  }
+
+  Future<void> cacheInstallerBatteryConfig(
+    Map<String, dynamic> values, {
+    String? scope,
+  }) async {
+    await _writeInstallerSnapshot(
+      _installerBatteryConfigKey,
+      values,
+      scope: scope,
+    );
+  }
+
+  Future<Map<String, dynamic>?> readInstallerBatteryConfig({
+    String? scope,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    return _readJsonMap(
+      prefs.getString(_scopedKey(_installerBatteryConfigKey, scope)),
+    );
+  }
+
+  Future<void> cacheInstallerOptimizerIntervalSeconds(
+    int seconds, {
+    String? scope,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _scopedKey(_installerOptimizerIntervalKey, scope),
+      seconds,
+    );
+  }
+
+  Future<int?> readInstallerOptimizerIntervalSeconds({String? scope}) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_scopedKey(_installerOptimizerIntervalKey, scope));
   }
 
   Future<void> _writeInstallerSnapshot(
     String key,
-    Map<String, dynamic> values,
-  ) async {
+    Map<String, dynamic> values, {
+    String? scope,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      key,
-      jsonEncode({
-        ...values,
-        'savedAt': DateTime.now().toIso8601String(),
-      }),
+      _scopedKey(key, scope),
+      jsonEncode({...values, 'savedAt': DateTime.now().toIso8601String()}),
     );
   }
 

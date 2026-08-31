@@ -178,11 +178,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen>
             child: const Icon(Icons.verified_user_outlined, size: 42),
           ),
           const SizedBox(height: AppSpacing.lg),
-          const AuthHeader(
-            title: 'Verify Your Email',
-            subtitle:
-                'We sent a verification link to your email. Verify it before continuing to Kilowatts.',
-          ),
+          const AuthHeader(title: 'Verify Your Email'),
           const SizedBox(height: AppSpacing.md),
           Text(
             widget.email,

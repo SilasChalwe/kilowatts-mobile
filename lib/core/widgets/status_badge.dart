@@ -80,11 +80,15 @@ class StatusBadge extends StatelessWidget {
                 Icon(_icon, size: 13, color: color),
                 const SizedBox(width: AppSpacing.xxs),
               ],
-              Text(
-                label,
-                style: AppTextStyles.caption.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

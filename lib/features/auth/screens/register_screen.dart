@@ -101,10 +101,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           key: _formKey,
           child: Column(
             children: [
-              const AuthHeader(
-                title: 'Create Account',
-                subtitle: 'Fill in the details below to get started.',
-              ),
+              const AuthHeader(title: 'Create Account'),
               const SizedBox(height: AppSpacing.xl),
               if (_errorMessage != null) ...[
                 InlineMessage(message: _errorMessage!, isError: true),

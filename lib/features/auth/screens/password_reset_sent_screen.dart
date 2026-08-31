@@ -27,11 +27,7 @@ class PasswordResetSentScreen extends StatelessWidget {
             child: const Icon(Icons.mark_email_read_outlined, size: 42),
           ),
           const SizedBox(height: AppSpacing.lg),
-          const AuthHeader(
-            title: 'Check Your Email',
-            subtitle:
-                'If an account matches that email, we will send password reset instructions.',
-          ),
+          const AuthHeader(title: 'Check Your Email'),
           if (email.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             Text(

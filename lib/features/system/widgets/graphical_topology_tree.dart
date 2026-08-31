@@ -43,7 +43,10 @@ class GraphicalTopologyTree extends StatelessWidget {
       height: height,
       child: Stack(
         children: [
-          CustomPaint(size: Size(width, height), painter: _ConnectorPainter(root)),
+          CustomPaint(
+            size: Size(width, height),
+            painter: _ConnectorPainter(root),
+          ),
           ..._buildBoxes(root),
         ],
       ),
@@ -52,16 +55,19 @@ class GraphicalTopologyTree extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.sm,
-                ),
-                child: Center(child: diagram),
+          child: SizedBox(
+            width: constraints.maxWidth,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xs,
+                vertical: AppSpacing.sm,
+              ),
+              child: FittedBox(
+                // Width is the responsive constraint; tall trees can scroll
+                // vertically so their node details are not made tiny.
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.topCenter,
+                child: diagram,
               ),
             ),
           ),
@@ -154,7 +160,9 @@ class GraphicalTopologyTree extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          mouseCursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+          mouseCursor: onTap == null
+              ? MouseCursor.defer
+              : SystemMouseCursors.click,
           hoverColor: accent.withValues(alpha: 0.06),
           focusColor: accent.withValues(alpha: 0.09),
           child: Padding(
@@ -171,11 +179,11 @@ class GraphicalTopologyTree extends StatelessWidget {
                   child: Icon(
                     isLoad
                         ? (isOn
-                            ? Icons.flash_on_rounded
-                            : Icons.power_settings_new_rounded)
+                              ? Icons.flash_on_rounded
+                              : Icons.power_settings_new_rounded)
                         : (physicalNode?.role == NodeRole.central
-                            ? Icons.memory_rounded
-                            : Icons.developer_board_outlined),
+                              ? Icons.memory_rounded
+                              : Icons.developer_board_outlined),
                     size: 20,
                     color: accent,
                   ),
@@ -362,14 +370,14 @@ class _ConnectorPainter extends CustomPainter {
   static const double _vGap = GraphicalTopologyTree._vGap;
 
   Offset _bottomCenter(_LaidOutNode node) => Offset(
-        node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
-        node.depth * (_boxHeight + _vGap) + _boxHeight,
-      );
+    node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
+    node.depth * (_boxHeight + _vGap) + _boxHeight,
+  );
 
   Offset _topCenter(_LaidOutNode node) => Offset(
-        node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
-        node.depth * (_boxHeight + _vGap),
-      );
+    node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
+    node.depth * (_boxHeight + _vGap),
+  );
 
   @override
   void paint(Canvas canvas, Size size) {

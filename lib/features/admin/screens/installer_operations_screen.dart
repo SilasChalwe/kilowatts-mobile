@@ -126,11 +126,6 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
                               state?.lastOptimizationAt,
                             ),
                           ),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            'Request one Best-First planning cycle using the current battery budget, priorities and schedules.',
-                            style: AppTextStyles.caption,
-                          ),
                           const SizedBox(height: AppSpacing.md),
                           Align(
                             alignment: Alignment.centerRight,
@@ -167,11 +162,6 @@ class _InstallerOperationsScreenState extends State<InstallerOperationsScreen> {
                             value: _lastAppliedInterval == null
                                 ? 'Not published by Central'
                                 : '${_friendlyInterval(_lastAppliedInterval!)} · last applied here',
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            'Controls how often Central automatically starts a new planning cycle.',
-                            style: AppTextStyles.caption,
                           ),
                           const SizedBox(height: AppSpacing.md),
                           Align(
@@ -308,11 +298,6 @@ class _IntervalDialogState extends State<_IntervalDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Choose a common cadence or enter a custom interval.',
-              style: AppTextStyles.caption,
-            ),
-            const SizedBox(height: AppSpacing.md),
             Wrap(
               spacing: AppSpacing.xs,
               runSpacing: AppSpacing.xs,

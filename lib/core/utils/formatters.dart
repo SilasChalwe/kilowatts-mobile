@@ -7,7 +7,7 @@ abstract final class Formatters {
     if (absWatts >= 1000) {
       return '${(watts / 1000).toStringAsFixed(decimalsForKw)} kW';
     }
-    return '${watts.toStringAsFixed(0)} W';
+    return '${watts.toStringAsFixed(absWatts < 1 ? 2 : 1)} W';
   }
 
   static String energy(double? kWh) {

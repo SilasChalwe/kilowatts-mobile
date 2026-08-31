@@ -193,7 +193,7 @@ class LoadModel {
     this.health = LoadHealth.available,
     this.schedule = LoadSchedule.disabled,
     this.rejectionReason,
-    this.plannedPowerW,
+    this.ratedPowerW,
     this.ratedVoltageV,
     this.ratedCurrentA,
     this.startupPowerW,
@@ -222,9 +222,9 @@ class LoadModel {
   final LoadSchedule schedule;
   final LoadRejectionReason? rejectionReason;
 
-  /// Installer-entered planning power. Current firmware publishes this as
+  /// Installer-entered rated power. Current firmware publishes this as
   /// `powerRatingWatts`; it is not a live per-load measurement.
-  final double? plannedPowerW;
+  final double? ratedPowerW;
   final double? ratedVoltageV;
   final double? ratedCurrentA;
   final double? startupPowerW;
@@ -278,7 +278,7 @@ class LoadModel {
         json.stringOrNull('bestFirstRejectionReason') ??
             json.stringOrNull('rejectionReason'),
       ),
-      plannedPowerW:
+      ratedPowerW:
           json.doubleOrNull('powerRatingWatts') ??
           json.doubleOrNull('nominalPowerWatts'),
       ratedVoltageV: json.doubleOrNull('nominalVoltageVolts'),

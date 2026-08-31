@@ -4,54 +4,39 @@ import 'package:kilowatts_mobile/features/system/models/topology_model.dart';
 
 Map<String, dynamic> _load({required String nodeMac, required int relayPin}) {
   return {
-    'relayPin': relayPin,
     'name': 'Load $relayPin',
-    'nodeMac': nodeMac,
-    'mode': 'AUTO_ON',
-    'targetOn': true,
-    'confirmedOn': true,
-    'confirmedStateValid': true,
-    'priority': 5,
-    'nominalVoltageVolts': 12.0,
-    'nominalCurrentAmps': 0.4,
-    'nominalPowerWatts': 5.0,
-    'startupWatts': 5.0,
-    'perLoadMeasurementAvailable': false,
-    'scheduleEnabled': false,
-    'scheduleHour': 0,
-    'scheduleMinute': 0,
-    'health': 'AVAILABLE',
-    'rejectionReason': 'NONE',
-  };
-}
-
-Map<String, dynamic> _branch({required String nodeMac, required int relayPin}) {
-  return {
-    'type': 'branch',
+    'nodeName': 'Node',
     'nodeMac': nodeMac,
     'relayPin': relayPin,
-    'maximumCurrentAmps': 10.0,
-    'maximumCurrentConfigured': true,
-    'load': _load(nodeMac: nodeMac, relayPin: relayPin),
+    'controlMode': 'AUTOMATIC',
+    'mode': 'AUTO_ON',
+    'manualControlAllowed': false,
+    'priority': 5,
+    'powerRatingWatts': 5.0,
+    'powerType': 'DC',
+    'schedule': {'enabled': false},
+    'bestFirstRejectionReason': 'NONE',
   };
 }
 
-/// Matches `TopologyTree::buildTreeJson`'s exact recursive shape (see
-/// lib/TopologyTree/TopologyTree.cpp) — a `{"central":{...}}` tree with
-/// nested `children`, not a flat `{"nodes":[...],"branches":[...]}` list.
+/// Matches `TopologyTree::buildTreeJson`/`appendLoadsForNode`'s exact
+/// recursive shape (see lib/NodeManager/Central/TopologyTree.cpp) — a
+/// `{"central":{...}}` tree with nested `children`, and a flat `"loads"`
+/// array (the same Load shape `state/loads` publishes) at every node.
+/// Firmware never emits a `"branches"` key.
 const _centralMac = 'AA:AA:AA:AA:AA:AA';
 const _smartMac = 'BB:BB:BB:BB:BB:BB';
 const _grandchildMac = 'CC:CC:CC:CC:CC:CC';
 
 Map<String, dynamic> _tree() {
   return {
-    'schemaVersion': 1,
+    'schemaVersion': 3,
     'central': {
       'type': 'central',
       'name': 'Central',
       'mac': _centralMac,
       'online': true,
-      'branches': [_branch(nodeMac: _centralMac, relayPin: 25)],
+      'loads': [_load(nodeMac: _centralMac, relayPin: 25)],
       'children': [
         {
           'type': 'smartNode',
@@ -60,7 +45,7 @@ Map<String, dynamic> _tree() {
           'parentMac': _centralMac,
           'hopCountToCentral': 1,
           'online': true,
-          'branches': [_branch(nodeMac: _smartMac, relayPin: 4)],
+          'loads': [_load(nodeMac: _smartMac, relayPin: 4)],
           'children': [
             {
               'type': 'smartNode',
@@ -69,7 +54,7 @@ Map<String, dynamic> _tree() {
               'parentMac': _smartMac,
               'hopCountToCentral': 2,
               'online': false,
-              'branches': [_branch(nodeMac: _grandchildMac, relayPin: 12)],
+              'loads': [_load(nodeMac: _grandchildMac, relayPin: 12)],
               'children': [],
             },
           ],
@@ -81,11 +66,9 @@ Map<String, dynamic> _tree() {
 
 void main() {
   group('TopologyModel.fromJson', () {
-    test('walks a multi-level recursive tree and flattens it', () {
+    test('walks a multi-level recursive tree and flattens the node list', () {
       final topology = TopologyModel.fromJson(_tree());
-
       expect(topology.nodes, hasLength(3));
-      expect(topology.branches, hasLength(3));
     });
 
     test('identifies the central node by tree position, not a wire field', () {
@@ -106,14 +89,16 @@ void main() {
       expect(topology.childrenOf(_smartMac).map((n) => n.mac), [_grandchildMac]);
     });
 
-    test('branches carry electrical ownership independent of communication topology', () {
+    test('each node carries its own loads, parsed from that node\'s "loads" array', () {
       final topology = TopologyModel.fromJson(_tree());
-      expect(topology.branchesOf(_smartMac).single.relayPin, 4);
-      expect(topology.branchesOf(_grandchildMac).single.relayPin, 12);
+
+      expect(topology.nodeByMac(_smartMac)!.loads.single.relayPin, 4);
+      expect(topology.nodeByMac(_grandchildMac)!.loads.single.relayPin, 12);
+      expect(topology.central!.loads.single.relayPin, 25);
     });
 
     test('a null central (no Central registered yet) yields TopologyModel.empty', () {
-      final topology = TopologyModel.fromJson({'schemaVersion': 1, 'central': null});
+      final topology = TopologyModel.fromJson({'schemaVersion': 3, 'central': null});
       expect(topology.nodes, isEmpty);
       expect(topology.central, isNull);
     });

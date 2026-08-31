@@ -1,11 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 class AuthService {
-  AuthService({FirebaseAuth? firebaseAuth})
+  AuthService({FirebaseAuth? firebaseAuth, this._firestore})
     : _auth = firebaseAuth ?? FirebaseAuth.instance;
 
   final FirebaseAuth _auth;
+  final FirebaseFirestore? _firestore;
+  FirebaseFirestore get firestore => _firestore ?? FirebaseFirestore.instance;
 
   Stream<User?> get userChanges => _auth.userChanges();
 
@@ -20,10 +23,12 @@ class AuthService {
   }
 
   Future<void> signIn({required String email, required String password}) async {
-    await _auth.signInWithEmailAndPassword(
+    final credential = await _auth.signInWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
+    final user = credential.user;
+    if (user != null) await _ensureProfile(user);
   }
 
   Future<void> createAccount({
@@ -42,8 +47,22 @@ class AuthService {
     }
 
     await user.updateDisplayName(fullName.trim());
+    await _ensureProfile(user, fullName: fullName.trim());
     await user.sendEmailVerification();
     await user.reload();
+  }
+
+  Future<void> _ensureProfile(User user, {String? fullName}) async {
+    final email = user.email;
+    if (email == null || email.isEmpty) return;
+    final profile = firestore.collection('users').doc(email.toLowerCase());
+    final existing = await profile.get();
+    await profile.set({
+      'uid': user.uid,
+      if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (!existing.exists) 'role': 'unassigned',
+    }, SetOptions(merge: true));
   }
 
   Future<void> sendPasswordReset({required String email}) async {

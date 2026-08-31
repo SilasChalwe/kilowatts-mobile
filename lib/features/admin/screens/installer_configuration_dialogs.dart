@@ -111,6 +111,7 @@ class _InstallerBrokerDialogState extends State<_InstallerBrokerDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _host;
   late final TextEditingController _port;
+  late final TextEditingController _webSocketPort;
   late final TextEditingController _path;
   late final TextEditingController _namespace;
   late final TextEditingController _username;
@@ -125,6 +126,9 @@ class _InstallerBrokerDialogState extends State<_InstallerBrokerDialog> {
     super.initState();
     _host = TextEditingController(text: widget.initial.host);
     _port = TextEditingController(text: '${widget.initial.port}');
+    _webSocketPort = TextEditingController(
+      text: '${widget.initial.resolvedWebSocketPort}',
+    );
     _path = TextEditingController(text: widget.initial.webSocketPath);
     _namespace = TextEditingController(text: widget.initial.topicNamespace);
     _username = TextEditingController(text: widget.initial.username ?? '');
@@ -135,6 +139,7 @@ class _InstallerBrokerDialogState extends State<_InstallerBrokerDialog> {
   void dispose() {
     _host.dispose();
     _port.dispose();
+    _webSocketPort.dispose();
     _path.dispose();
     _namespace.dispose();
     _username.dispose();
@@ -145,12 +150,21 @@ class _InstallerBrokerDialogState extends State<_InstallerBrokerDialog> {
   MqttConfig? _read() {
     if (!(_formKey.currentState?.validate() ?? false)) return null;
     final port = int.tryParse(_port.text.trim());
-    if (port == null || port < 1 || port > 65535) return null;
+    final webSocketPort = int.tryParse(_webSocketPort.text.trim());
+    if (port == null ||
+        port < 1 ||
+        port > 65535 ||
+        webSocketPort == null ||
+        webSocketPort < 1 ||
+        webSocketPort > 65535) {
+      return null;
+    }
     final password = _password.text.trim();
     return MqttConfig(
       host: _host.text.trim(),
       port: port,
       useTls: _useTls,
+      webSocketPort: webSocketPort,
       webSocketPath: _path.text.trim(),
       topicNamespace: _namespace.text.trim(),
       username: _username.text.trim().isEmpty ? null : _username.text.trim(),
@@ -210,7 +224,7 @@ class _InstallerBrokerDialogState extends State<_InstallerBrokerDialog> {
                   children: [
                     Expanded(
                       child: AppTextField(
-                        label: 'Port',
+                        label: 'MQTT/TCP port',
                         controller: _port,
                         keyboardType: TextInputType.number,
                         validator: (value) {
@@ -224,15 +238,27 @@ class _InstallerBrokerDialogState extends State<_InstallerBrokerDialog> {
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: AppTextField(
-                        label: 'WebSocket path',
-                        controller: _path,
+                        label: 'WebSocket port',
+                        controller: _webSocketPort,
+                        keyboardType: TextInputType.number,
                         validator: (value) {
-                          final path = value?.trim() ?? '';
-                          return path.startsWith('/') ? null : 'Start with /.';
+                          final port = int.tryParse(value?.trim() ?? '');
+                          return port == null || port < 1 || port > 65535
+                              ? 'Use 1–65,535.'
+                              : null;
                         },
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppTextField(
+                  label: 'WebSocket path',
+                  controller: _path,
+                  validator: (value) {
+                    final path = value?.trim() ?? '';
+                    return path.startsWith('/') ? null : 'Start with /.';
+                  },
                 ),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
@@ -329,9 +355,7 @@ class _SafetyPolicyDialogState extends State<_SafetyPolicyDialog> {
     _minimumSoc = TextEditingController(
       text: _initial('minimumStateOfChargePercent', 20),
     );
-    _runtime = TextEditingController(
-      text: _initial('requiredRuntimeHours', 4),
-    );
+    _runtime = TextEditingController(text: _initial('requiredRuntimeHours', 4));
     _batteryCurrent = TextEditingController(
       text: _initial('maximumBatteryDischargeCurrentAmps', 40),
     );
@@ -459,9 +483,7 @@ class _BatteryConfigDialogState extends State<_BatteryConfigDialog> {
     _shunt = TextEditingController(
       text: _initial('shuntResistanceOhms', 0.005),
     );
-    _voltage = TextEditingController(
-      text: _initial('nominalVoltageVolts', 12),
-    );
+    _voltage = TextEditingController(text: _initial('nominalVoltageVolts', 12));
     _maxCurrent = TextEditingController(
       text: _initial('maximumExpectedCurrentAmps', 40),
     );
@@ -691,7 +713,9 @@ class _AddLoadDialogState extends State<_AddLoadDialog> {
                     Expanded(
                       child: DropdownButtonFormField<InstallerLoadPowerType>(
                         initialValue: _powerType,
-                        decoration: const InputDecoration(labelText: 'Power type'),
+                        decoration: const InputDecoration(
+                          labelText: 'Power type',
+                        ),
                         items: const [
                           DropdownMenuItem(
                             value: InstallerLoadPowerType.dc,
@@ -791,9 +815,7 @@ class _SimulationDialogState extends State<_SimulationDialog> {
       SimulationInputDraft(
         voltage: double.parse(_voltage.text.trim()),
         current: double.parse(_current.text.trim()),
-        soc: _soc.text.trim().isEmpty
-            ? null
-            : double.parse(_soc.text.trim()),
+        soc: _soc.text.trim().isEmpty ? null : double.parse(_soc.text.trim()),
       ),
     );
   }

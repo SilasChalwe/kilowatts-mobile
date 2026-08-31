@@ -41,14 +41,12 @@ class _SafetyConfigurationScreenState extends State<SafetyConfigurationScreen> {
                   children: [
                     SafetyParameterField(
                       label: 'Minimum state of charge',
-                      description: 'Auto-load cutoff level',
                       unit: '%',
                       initialValue: draft.lowBatteryCutoffPercent,
                       onChanged: (v) => draft.lowBatteryCutoffPercent = v,
                     ),
                     SafetyParameterField(
                       label: 'Required runtime',
-                      description: 'Battery runtime target',
                       unit: 'h',
                       initialValue: draft.targetRuntimeHours,
                       onChanged: (v) => draft.targetRuntimeHours = v,
@@ -63,14 +61,12 @@ class _SafetyConfigurationScreenState extends State<SafetyConfigurationScreen> {
                   children: [
                     SafetyParameterField(
                       label: 'Maximum battery discharge',
-                      description: 'Battery current limit',
                       unit: 'A',
                       initialValue: draft.maxBatteryDischargeCurrentA,
                       onChanged: (v) => draft.maxBatteryDischargeCurrentA = v,
                     ),
                     SafetyParameterField(
                       label: 'Maximum main current',
-                      description: 'Main distribution limit',
                       unit: 'A',
                       initialValue: draft.mainCurrentLimitA,
                       onChanged: (v) => draft.mainCurrentLimitA = v,

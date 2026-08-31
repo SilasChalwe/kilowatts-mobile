@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/app_state/app_state_scope.dart';
+import '../../../core/services/mqtt_config.dart';
+import '../../../core/services/mqtt_presence_store.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -11,11 +13,13 @@ import '../../../core/widgets/responsive_content.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../auth/data/access_control_service.dart';
+import 'installer_configuration_dialogs.dart';
 
 class InstallerUsersScreen extends StatefulWidget {
-  const InstallerUsersScreen({super.key, this.embedded = false});
+  const InstallerUsersScreen({super.key, this.embedded = false, this.onSelect});
 
   final bool embedded;
+  final ValueChanged<String>? onSelect;
 
   @override
   State<InstallerUsersScreen> createState() => _InstallerUsersScreenState();
@@ -92,7 +96,6 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
         fullName: result.fullName,
         phoneNumber: result.phoneNumber,
         role: result.role,
-        installationId: result.installationId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -109,13 +112,16 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
       final message = error is ArgumentError
           ? error.message?.toString() ?? 'Invalid user details.'
           : 'Could not save this user.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
   Future<void> _revoke(KilowattsUserAccess user) async {
-    final currentEmail =
-        AppStateScope.of(context).currentUser?.email?.toLowerCase();
+    final currentEmail = AppStateScope.of(
+      context,
+    ).currentUser?.email?.toLowerCase();
     if (user.email.toLowerCase() == currentEmail) return;
 
     final confirmed = await showDialog<bool>(
@@ -154,9 +160,44 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
     }
   }
 
+  Future<void> _assignMqtt(KilowattsUserAccess user) async {
+    final uid = user.uid;
+    if (uid == null || uid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This user must sign in before MQTT can be assigned.'),
+        ),
+      );
+      return;
+    }
+
+    final appState = AppStateScope.of(context);
+    final existing = await appState.readSharedMqttConfig(uid);
+    if (!mounted) return;
+    final config = await showInstallerBrokerDialog(
+      context,
+      existing ??
+          MqttConfig(host: '', port: 8883, webSocketPort: 8884, useTls: true),
+    );
+    if (config == null || !mounted) return;
+    try {
+      await appState.saveSharedMqttConfig(uid, config);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('MQTT assigned to ${user.displayName}.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not assign MQTT settings.')),
+      );
+    }
+  }
+
   Widget _content(BuildContext context) {
-    final currentEmail =
-        AppStateScope.of(context).currentUser?.email?.toLowerCase();
+    final currentEmail = AppStateScope.of(
+      context,
+    ).currentUser?.email?.toLowerCase();
     final hasUsers = _users.isNotEmpty;
 
     return ListView(
@@ -180,11 +221,6 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
                     label: const Text('Add user'),
                   ),
                 ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Manage user details, roles and installation access.',
-                style: AppTextStyles.caption,
               ),
               const SizedBox(height: AppSpacing.md),
               if (_loading && !hasUsers)
@@ -229,6 +265,18 @@ class _InstallerUsersScreenState extends State<InstallerUsersScreen> {
                           isCurrent:
                               _users[index].email.toLowerCase() == currentEmail,
                           onEdit: () => _openEditor(_users[index]),
+                          onAssignMqtt: () => _assignMqtt(_users[index]),
+                          onSelect:
+                              widget.onSelect == null ||
+                                  _users[index].uid == null
+                              ? null
+                              : () => widget.onSelect!(_users[index].uid!),
+                          presenceStream: _users[index].uid != null
+                              ? AppStateScope.of(context).watchMqttPresence(
+                                  ownerUid: _users[index].uid!,
+                                  userUid: _users[index].uid!,
+                                )
+                              : null,
                           onRevoke: () => _revoke(_users[index]),
                         ),
                         if (index != _users.length - 1)
@@ -286,14 +334,12 @@ class _AccessDraft {
     required this.fullName,
     required this.phoneNumber,
     required this.role,
-    this.installationId,
   });
 
   final String email;
   final String fullName;
   final String phoneNumber;
   final String role;
-  final String? installationId;
 }
 
 class _AccessEditorDialog extends StatefulWidget {
@@ -310,7 +356,6 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
   late final TextEditingController _email;
   late final TextEditingController _fullName;
   late final TextEditingController _phone;
-  late final TextEditingController _installation;
   late String _role;
 
   @override
@@ -319,12 +364,11 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
     _email = TextEditingController(text: widget.existing?.email ?? '');
     _fullName = TextEditingController(text: widget.existing?.fullName ?? '');
     _phone = TextEditingController(text: widget.existing?.phoneNumber ?? '');
-    _installation = TextEditingController(
-      text: widget.existing?.installationId ?? '',
-    );
-    _role = widget.existing?.role == KilowattsRole.installer
-        ? 'installer'
-        : 'homeowner';
+    _role = switch (widget.existing?.role) {
+      KilowattsRole.installer => 'installer',
+      KilowattsRole.homeowner => 'homeowner',
+      _ => 'unassigned',
+    };
   }
 
   @override
@@ -332,7 +376,6 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
     _email.dispose();
     _fullName.dispose();
     _phone.dispose();
-    _installation.dispose();
     super.dispose();
   }
 
@@ -344,9 +387,6 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
         fullName: _fullName.text.trim(),
         phoneNumber: _phone.text.trim(),
         role: _role,
-        installationId: _role == 'homeowner'
-            ? _installation.text.trim()
-            : null,
       ),
     );
   }
@@ -397,6 +437,10 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: const [
                     DropdownMenuItem(
+                      value: 'unassigned',
+                      child: Text('Unassigned'),
+                    ),
+                    DropdownMenuItem(
                       value: 'homeowner',
                       child: Text('Homeowner'),
                     ),
@@ -407,17 +451,6 @@ class _AccessEditorDialogState extends State<_AccessEditorDialog> {
                   ],
                   onChanged: (value) => setState(() => _role = value!),
                 ),
-                if (_role == 'homeowner') ...[
-                  const SizedBox(height: AppSpacing.md),
-                  TextFormField(
-                    controller: _installation,
-                    decoration:
-                        const InputDecoration(labelText: 'Installation ID'),
-                    validator: (value) => value?.trim().isNotEmpty == true
-                        ? null
-                        : 'Installation ID is required.',
-                  ),
-                ],
               ],
             ),
           ),
@@ -439,131 +472,181 @@ class _UserRow extends StatelessWidget {
     required this.user,
     required this.isCurrent,
     required this.onEdit,
+    required this.onAssignMqtt,
+    required this.onSelect,
+    required this.presenceStream,
     required this.onRevoke,
   });
 
   final KilowattsUserAccess user;
   final bool isCurrent;
   final VoidCallback onEdit;
+  final VoidCallback onAssignMqtt;
+  final VoidCallback? onSelect;
+  final Stream<MqttPresence?>? presenceStream;
   final VoidCallback onRevoke;
 
   @override
   Widget build(BuildContext context) {
     final isInstaller = user.role == KilowattsRole.installer;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: AppColors.primarySoft,
-            child: Text(
-              user.initials,
-              style: AppTextStyles.label.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
+    return InkWell(
+      onTap: onSelect,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: AppColors.primarySoft,
+              child: Text(
+                user.initials,
+                style: AppTextStyles.label.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        user.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.label,
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.label,
+                        ),
                       ),
-                    ),
-                    if (isCurrent) ...[
-                      const SizedBox(width: AppSpacing.xs),
-                      const _YouBadge(),
+                      if (isCurrent) ...[
+                        const SizedBox(width: AppSpacing.xs),
+                        const _YouBadge(),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  user.email,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    user.email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.caption,
+                  ),
+                ],
+              ),
+            ),
+            if (MediaQuery.sizeOf(context).width >= 760) ...[
+              Expanded(
+                flex: 2,
+                child: Text(
+                  user.phoneNumber ?? 'Phone not recorded',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.caption,
                 ),
-              ],
-            ),
-          ),
-          if (MediaQuery.sizeOf(context).width >= 760) ...[
-            Expanded(
-              flex: 2,
-              child: Text(
-                user.phoneNumber ?? 'Phone not recorded',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.caption,
               ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: StatusBadge(
-                  label: isInstaller ? 'Installer' : 'Homeowner',
-                  tone: isInstaller ? StatusTone.info : StatusTone.neutral,
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: StatusBadge(
+                    label: user.roleLabel,
+                    tone: isInstaller
+                        ? StatusTone.info
+                        : user.role == KilowattsRole.unassigned
+                        ? StatusTone.warning
+                        : StatusTone.neutral,
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: Text(
-                user.installationId ?? 'All installations',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.caption,
+              Expanded(
+                flex: 2,
+                child: presenceStream == null
+                    ? const Text('App: no account', style: AppTextStyles.caption)
+                    : StreamBuilder<MqttPresence?>(
+                        stream: presenceStream,
+                        builder: (context, snapshot) {
+                          final presence = snapshot.data;
+                          final online =
+                              presence?.online == true &&
+                              presence?.isFresh == true;
+                          // Deliberately not "Online"/"Offline" — that pair
+                          // is already used elsewhere for Central's own
+                          // availability, a different signal from whether
+                          // this specific person's own app is connected.
+                          return StatusBadge(
+                            label: presence == null
+                                ? 'App: never connected'
+                                : online
+                                ? 'App: connected'
+                                : 'App: not connected',
+                            tone: online
+                                ? StatusTone.positive
+                                : StatusTone.neutral,
+                          );
+                        },
+                      ),
               ),
-            ),
-          ],
-          PopupMenuButton<_UserAction>(
-            tooltip: 'User actions',
-            onSelected: (action) {
-              if (action == _UserAction.edit) onEdit();
-              if (action == _UserAction.revoke && !isCurrent) onRevoke();
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: _UserAction.edit,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.edit_outlined),
-                  title: Text('Edit user'),
-                ),
-              ),
-              PopupMenuItem(
-                value: _UserAction.revoke,
-                enabled: !isCurrent,
-                child: const ListTile(
-                  dense: true,
-                  leading: Icon(Icons.person_remove_outlined),
-                  title: Text('Revoke access'),
+              Expanded(
+                child: Text(
+                  user.uid ?? 'Not signed in',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption,
                 ),
               ),
             ],
-          ),
-        ],
+            PopupMenuButton<_UserAction>(
+              tooltip: 'User actions',
+              onSelected: (action) {
+                if (action == _UserAction.edit) onEdit();
+                if (action == _UserAction.assignMqtt) onAssignMqtt();
+                if (action == _UserAction.revoke && !isCurrent) onRevoke();
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: _UserAction.edit,
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Edit user'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: _UserAction.assignMqtt,
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.wifi_tethering_outlined),
+                    title: Text('Assign MQTT'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _UserAction.revoke,
+                  enabled: !isCurrent,
+                  child: const ListTile(
+                    dense: true,
+                    leading: Icon(Icons.person_remove_outlined),
+                    title: Text('Revoke access'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-enum _UserAction { edit, revoke }
+enum _UserAction { edit, assignMqtt, revoke }
 
 class _YouBadge extends StatelessWidget {
   const _YouBadge();

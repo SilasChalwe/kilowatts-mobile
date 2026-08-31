@@ -6,13 +6,13 @@ enum KilowattsRole { homeowner, installer, unassigned }
 class InstallationAccess {
   const InstallationAccess({
     required this.role,
-    this.installationId,
+    this.uid,
     this.fullName,
     this.phoneNumber,
   });
 
   final KilowattsRole role;
-  final String? installationId;
+  final String? uid;
   final String? fullName;
   final String? phoneNumber;
 
@@ -24,14 +24,14 @@ class KilowattsUserAccess {
   const KilowattsUserAccess({
     required this.email,
     required this.role,
-    this.installationId,
+    this.uid,
     this.fullName,
     this.phoneNumber,
   });
 
   final String email;
   final KilowattsRole role;
-  final String? installationId;
+  final String? uid;
   final String? fullName;
   final String? phoneNumber;
 
@@ -67,7 +67,8 @@ class KilowattsUserAccess {
 
 /// Firestore `users/{email}` is the Kilowatts user directory and authorization
 /// boundary. Firebase Authentication proves identity; this document stores the
-/// installer-managed profile, role and installation assignment. Signed-in
+/// installer-managed profile and role. The Firebase Authentication UID is
+/// also the household/installation key; there is no second assigned ID. Signed-in
 /// users may read their own record, while only an existing installer may create,
 /// edit or remove user records.
 class AccessControlService {
@@ -86,7 +87,6 @@ class AccessControlService {
       case 'installer':
       case 'admin':
         return KilowattsRole.installer;
-      case 'user':
       case 'homeowner':
         return KilowattsRole.homeowner;
       default:
@@ -99,11 +99,14 @@ class AccessControlService {
     return text.isEmpty ? null : text;
   }
 
-  static InstallationAccess _accessFromData(Map<String, dynamic>? data) {
+  static InstallationAccess _accessFromData(
+    Map<String, dynamic>? data, {
+    String? authenticatedUid,
+  }) {
     final values = data ?? const <String, dynamic>{};
     return InstallationAccess(
       role: _parseRole(values['role']),
-      installationId: _optionalString(values['installationId']),
+      uid: authenticatedUid ?? _optionalString(values['uid']),
       fullName: _optionalString(values['fullName']),
       phoneNumber: _optionalString(values['phoneNumber']),
     );
@@ -111,17 +114,33 @@ class AccessControlService {
 
   Future<InstallationAccess> resolve(User? user) async {
     final email = user?.email;
-    if (email == null) {
+    final authenticatedUid = user?.uid;
+    if (email == null || authenticatedUid == null) {
       return const InstallationAccess(role: KilowattsRole.unassigned);
     }
 
     final snapshot = await _users.doc(_docIdFor(email)).get();
-    return _accessFromData(snapshot.data());
+    if (snapshot.exists) {
+      return _accessFromData(
+        snapshot.data(),
+        authenticatedUid: authenticatedUid,
+      );
+    }
+
+    final byUid = await _users
+        .where('uid', isEqualTo: authenticatedUid)
+        .limit(1)
+        .get();
+    return _accessFromData(
+      byUid.docs.isEmpty ? null : byUid.docs.first.data(),
+      authenticatedUid: authenticatedUid,
+    );
   }
 
   Stream<InstallationAccess> watchCurrent(User? user) {
     final email = user?.email;
-    if (email == null) {
+    final authenticatedUid = user?.uid;
+    if (email == null || authenticatedUid == null) {
       return Stream.value(
         const InstallationAccess(role: KilowattsRole.unassigned),
       );
@@ -129,7 +148,12 @@ class AccessControlService {
     return _users
         .doc(_docIdFor(email))
         .snapshots()
-        .map((snapshot) => _accessFromData(snapshot.data()));
+        .map(
+          (snapshot) => _accessFromData(
+            snapshot.data(),
+            authenticatedUid: authenticatedUid,
+          ),
+        );
   }
 
   /// Live installer view of the Firestore user directory. The UI intentionally
@@ -141,15 +165,14 @@ class AccessControlService {
         return KilowattsUserAccess(
           email: doc.id,
           role: _parseRole(data['role']),
-          installationId: _optionalString(data['installationId']),
+          uid: _optionalString(data['uid']),
           fullName: _optionalString(data['fullName']),
           phoneNumber: _optionalString(data['phoneNumber']),
         );
       }).toList();
       users.sort(
-        (a, b) => a.displayName
-            .toLowerCase()
-            .compareTo(b.displayName.toLowerCase()),
+        (a, b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
       );
       return users;
     });
@@ -162,7 +185,6 @@ class AccessControlService {
     required String fullName,
     required String phoneNumber,
     required String role,
-    String? installationId,
   }) {
     final normalizedEmail = _docIdFor(email);
     final normalizedName = fullName.trim();
@@ -178,32 +200,23 @@ class AccessControlService {
     if (normalizedPhone.length < 7) {
       throw ArgumentError('A valid phone number is required.');
     }
-    if (normalizedRole != 'installer' && normalizedRole != 'homeowner') {
-      throw ArgumentError('Role must be installer or homeowner.');
-    }
-
-    final installation = installationId?.trim() ?? '';
-    if (normalizedRole == 'homeowner' && installation.isEmpty) {
-      throw ArgumentError('Homeowner access requires an installation ID.');
+    if (normalizedRole != 'installer' &&
+        normalizedRole != 'homeowner' &&
+        normalizedRole != 'unassigned') {
+      throw ArgumentError('Role must be installer, homeowner, or unassigned.');
     }
 
     return _users.doc(normalizedEmail).set({
       'fullName': normalizedName,
       'phoneNumber': normalizedPhone,
       'role': normalizedRole,
-      if (normalizedRole == 'homeowner') 'installationId': installation,
-      if (normalizedRole == 'installer') 'installationId': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
   /// Role-only update retained for existing setup/integration call sites.
   /// It never fabricates missing name or phone profile values.
-  Future<void> assignRole({
-    required String email,
-    required String role,
-    String? installationId,
-  }) {
+  Future<void> assignRole({required String email, required String role}) {
     final normalizedEmail = _docIdFor(email);
     final normalizedRole = role.trim().toLowerCase();
     if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
@@ -212,19 +225,19 @@ class AccessControlService {
     if (normalizedRole != 'installer' && normalizedRole != 'homeowner') {
       throw ArgumentError('Role must be installer or homeowner.');
     }
-    final installation = installationId?.trim() ?? '';
-    if (normalizedRole == 'homeowner' && installation.isEmpty) {
-      throw ArgumentError('Homeowner access requires an installation ID.');
-    }
-
     return _users.doc(normalizedEmail).set({
       'role': normalizedRole,
-      if (normalizedRole == 'homeowner') 'installationId': installation,
-      if (normalizedRole == 'installer') 'installationId': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
-  Future<void> revokeAccess(String email) =>
-      _users.doc(_docIdFor(email)).delete();
+  /// Revokes access without deleting the user record: the Firestore rules
+  /// grant installers update rights but no delete rights on this collection,
+  /// and a soft revoke keeps the profile (name/phone/history) as an audit
+  /// trail. A revoked account lands on the "unassigned" access-required
+  /// screen the next time it reads its own profile.
+  Future<void> revokeAccess(String email) => _users.doc(_docIdFor(email)).set({
+    'role': 'unassigned',
+    'updatedAt': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
 }

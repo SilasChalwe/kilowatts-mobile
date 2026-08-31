@@ -15,19 +15,24 @@ class KilowattsApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppStateScope(
       appState: appState,
-      child: MaterialApp(
-        title: 'Kilowatts',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        initialRoute: AppRoutes.root,
-        onGenerateRoute: AppRouter.onGenerateRoute,
-        builder: (context, child) {
-          return GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-            child: child ?? const SizedBox.shrink(),
-          );
-        },
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: appState.themeMode,
+        builder: (context, mode, _) => MaterialApp(
+          title: 'Kilowatts',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: mode,
+          initialRoute: AppRoutes.root,
+          onGenerateRoute: AppRouter.onGenerateRoute,
+          builder: (context, child) {
+            return GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+        ),
       ),
     );
   }

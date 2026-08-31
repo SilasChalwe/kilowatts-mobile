@@ -27,6 +27,8 @@ class _FakeMqttService extends MqttService {
   final alertController = StreamController<AlertModel>.broadcast(sync: true);
   final connectionStatusController =
       StreamController<MqttConnectionStatus>.broadcast(sync: true);
+  final centralAvailabilityController =
+      StreamController<CentralAvailability>.broadcast(sync: true);
 
   @override
   Stream<SystemStateModel> get systemStateStream => systemStateController.stream;
@@ -45,6 +47,10 @@ class _FakeMqttService extends MqttService {
       connectionStatusController.stream;
 
   @override
+  Stream<CentralAvailability> get centralAvailabilityStream =>
+      centralAvailabilityController.stream;
+
+  @override
   MqttConnectionStatus get currentStatus => MqttConnectionStatus.connected;
 
   @override
@@ -57,6 +63,7 @@ class _FakeMqttService extends MqttService {
     loadsController.close();
     alertController.close();
     connectionStatusController.close();
+    centralAvailabilityController.close();
   }
 }
 
@@ -144,14 +151,23 @@ void main() {
     expect(systemStateNotifications, 0);
   });
 
-  test('isSystemStateLive requires both a connected socket and a recent update', () {
-    expect(appState.isSystemStateLive, isFalse);
+  test(
+    'isSystemStateLive requires a connected socket, an online Central and a recent update',
+    () {
+      expect(appState.isSystemStateLive, isFalse);
 
-    mqtt.connectionStatusController.add(MqttConnectionStatus.connected);
-    mqtt.systemStateController.add(SystemStateModel.fromJson(const {}));
+      mqtt.connectionStatusController.add(MqttConnectionStatus.connected);
+      mqtt.systemStateController.add(SystemStateModel.fromJson(const {}));
+      expect(
+        appState.isSystemStateLive,
+        isFalse,
+        reason: 'Central has not reported itself online yet',
+      );
 
-    expect(appState.isSystemStateLive, isTrue);
-  });
+      mqtt.centralAvailabilityController.add(CentralAvailability.online);
+      expect(appState.isSystemStateLive, isTrue);
+    },
+  );
 
   test('acknowledgeAllAlerts marks every accumulated alert acknowledged', () {
     mqtt.alertController.add(

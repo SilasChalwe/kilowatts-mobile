@@ -40,7 +40,6 @@ class _ScheduleConfigurationScreenState
                     ? const EmptyState(
                         icon: Icons.event_busy_outlined,
                         title: 'No Loads to Schedule',
-                        message: 'Go back and assign loads first.',
                       )
                     : ListView.separated(
                         itemCount: drafts.length,

@@ -1,12 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app_state/app_state.dart';
 import '../../../core/app_state/app_state_scope.dart';
-import '../../../core/services/mqtt_service.dart' show MqttConnectionStatus;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/kilowatts_logo.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../admin/screens/installer_console_screen.dart';
 import '../../admin/screens/installer_operations_screen.dart';
 import '../../admin/screens/installer_users_screen.dart';
@@ -34,6 +36,8 @@ class _MainShellState extends State<MainShell> {
       GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
   bool _didRequestConnect = false;
+  bool _didRestoreDestination = false;
+  Future<InstallationAccess>? _profile;
 
   @override
   void didChangeDependencies() {
@@ -42,84 +46,134 @@ class _MainShellState extends State<MainShell> {
     _didRequestConnect = true;
 
     final appState = AppStateScope.of(context);
+    _profile ??= appState.resolveCurrentAccess();
+    if (!_didRestoreDestination) {
+      _didRestoreDestination = true;
+      _restoreDestination(appState);
+    }
     if (appState.connectionStatus.value == MqttConnectionStatus.disconnected ||
         appState.connectionStatus.value == MqttConnectionStatus.notConfigured) {
       appState.connectMqtt();
     }
   }
 
+  Future<void> _restoreDestination(AppState appState) async {
+    final uid = appState.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final mode = widget.installerMode ? 'installer' : 'homeowner';
+    final saved = prefs.getInt('kilowatts.destination.$mode.$uid');
+    if (saved == null || saved < 0) return;
+    final destinationCount = _destinations().length;
+    if (saved >= destinationCount) return;
+    setState(() => _currentIndex = saved);
+  }
+
   List<_ProductDestination> _destinations() {
+    final appState = AppStateScope.of(context);
+    final selectedUserUid = appState.selectedUserUid;
+
+    Widget userPage(String name, Widget child) {
+      if (!widget.installerMode || selectedUserUid == null) return child;
+      return KeyedSubtree(
+        key: ValueKey('$name:$selectedUserUid'),
+        child: child,
+      );
+    }
+
+    final usersDestination = _ProductDestination(
+      label: 'Users & access',
+      icon: Icons.group_outlined,
+      selectedIcon: Icons.group_rounded,
+      page: InstallerUsersScreen(
+        embedded: true,
+        onSelect: (uid) {
+          appState.selectUser(uid);
+          setState(() => _currentIndex = 0);
+        },
+      ),
+      installerOnly: true,
+      showLiveStatus: false,
+    );
+
+    if (widget.installerMode && appState.selectedUserUid == null) {
+      return [usersDestination];
+    }
+
     return [
       _ProductDestination(
         label: 'Overview',
         icon: Icons.home_outlined,
         selectedIcon: Icons.home_rounded,
-        page: DashboardScreen(
-          onViewAllAlerts: () => setState(() => _currentIndex = 3),
+        page: userPage(
+          'overview',
+          DashboardScreen(
+            onViewAllAlerts: () => setState(() => _currentIndex = 3),
+          ),
         ),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Loads',
         icon: Icons.bolt_outlined,
         selectedIcon: Icons.bolt_rounded,
-        page: LoadsScreen(),
+        page: userPage('loads', const LoadsScreen()),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'House topology',
         icon: Icons.account_tree_outlined,
         selectedIcon: Icons.account_tree_rounded,
-        page: SystemTopologyScreen(),
+        page: userPage('topology', const SystemTopologyScreen()),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Alerts',
         icon: Icons.notifications_outlined,
         selectedIcon: Icons.notifications_rounded,
-        page: AlertsScreen(),
+        page: userPage('alerts', const AlertsScreen()),
         showUnreadBadge: true,
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Battery & power',
         icon: Icons.battery_charging_full_outlined,
         selectedIcon: Icons.battery_charging_full_rounded,
-        page: BatteryPowerScreen(embedded: true),
+        page: userPage('battery', const BatteryPowerScreen(embedded: true)),
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Reports',
         icon: Icons.insights_outlined,
         selectedIcon: Icons.insights_rounded,
-        page: HistoryScreen(embedded: true),
+        page: userPage('reports', const HistoryScreen(embedded: true)),
         showLiveStatus: false,
       ),
-      const _ProductDestination(
+      _ProductDestination(
         label: 'Settings',
         icon: Icons.settings_outlined,
         selectedIcon: Icons.settings_rounded,
-        page: SettingsScreen(embedded: true),
+        page: userPage('settings', const SettingsScreen(embedded: true)),
         showLiveStatus: false,
       ),
       if (widget.installerMode) ...[
-        const _ProductDestination(
+        _ProductDestination(
           label: 'Installer console',
           icon: Icons.build_outlined,
           selectedIcon: Icons.build_rounded,
-          page: InstallerConsoleScreen(embedded: true),
+          page: userPage(
+            'console',
+            const InstallerConsoleScreen(embedded: true),
+          ),
           installerOnly: true,
         ),
-        const _ProductDestination(
+        _ProductDestination(
           label: 'System operations',
           icon: Icons.tune_outlined,
           selectedIcon: Icons.tune_rounded,
-          page: InstallerOperationsScreen(embedded: true),
+          page: userPage(
+            'operations',
+            const InstallerOperationsScreen(embedded: true),
+          ),
           installerOnly: true,
         ),
-        const _ProductDestination(
-          label: 'Users & access',
-          icon: Icons.group_outlined,
-          selectedIcon: Icons.group_rounded,
-          page: InstallerUsersScreen(embedded: true),
-          installerOnly: true,
-          showLiveStatus: false,
-        ),
+        usersDestination,
       ],
     ];
   }
@@ -127,10 +181,17 @@ class _MainShellState extends State<MainShell> {
   void _selectDestination(int index, {bool closeDrawer = false}) {
     if (closeDrawer) Navigator.of(context).pop();
     setState(() => _currentIndex = index);
+    final uid = AppStateScope.of(context).currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    final mode = widget.installerMode ? 'installer' : 'homeowner';
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setInt('kilowatts.destination.$mode.$uid', index),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final appState = AppStateScope.of(context);
     final destinations = _destinations();
     final safeIndex = _currentIndex < destinations.length ? _currentIndex : 0;
     final current = destinations[safeIndex];
@@ -151,6 +212,7 @@ class _MainShellState extends State<MainShell> {
                       installerMode: widget.installerMode,
                       destinations: destinations,
                       selectedIndex: safeIndex,
+                      profile: _profile!,
                       onSelect: _selectDestination,
                     ),
                   ),
@@ -160,12 +222,16 @@ class _MainShellState extends State<MainShell> {
                         _DesktopUtilityBar(
                           title: current.label,
                           showLiveStatus: current.showLiveStatus,
+                          userUid: widget.installerMode
+                              ? appState.selectedUserUid
+                              : null,
                         ),
                         Expanded(
                           child: IndexedStack(
                             index: safeIndex,
-                            children:
-                                destinations.map((item) => item.page).toList(),
+                            children: destinations
+                                .map((item) => item.page)
+                                .toList(),
                           ),
                         ),
                       ],
@@ -208,6 +274,7 @@ class _MainShellState extends State<MainShell> {
                 installerMode: widget.installerMode,
                 destinations: destinations,
                 selectedIndex: safeIndex,
+                profile: _profile!,
                 onSelect: (index) =>
                     _selectDestination(index, closeDrawer: true),
               ),
@@ -227,10 +294,12 @@ class _DesktopUtilityBar extends StatelessWidget {
   const _DesktopUtilityBar({
     required this.title,
     required this.showLiveStatus,
+    this.userUid,
   });
 
   final String title;
   final bool showLiveStatus;
+  final String? userUid;
 
   @override
   Widget build(BuildContext context) {
@@ -244,6 +313,10 @@ class _DesktopUtilityBar extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(title, style: AppTextStyles.title)),
+          if (userUid != null) ...[
+            StatusBadge(label: userUid!, tone: StatusTone.neutral),
+            const SizedBox(width: AppSpacing.sm),
+          ],
           if (showLiveStatus) const _HeaderConnectionStatus(),
         ],
       ),
@@ -257,27 +330,18 @@ class _HeaderConnectionStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-    return ValueListenableBuilder<MqttConnectionStatus>(
-      valueListenable: appState.connectionStatus,
-      builder: (context, status, _) {
-        final connected = status == MqttConnectionStatus.connected;
-        final busy = status == MqttConnectionStatus.connecting ||
-            status == MqttConnectionStatus.reconnecting;
-        final color = connected
-            ? AppColors.success
-            : busy
-                ? AppColors.warning
-                : AppColors.offline;
-        final label = connected
-            ? 'Online'
-            : busy
-                ? 'Connecting'
-                : 'Offline';
-        final icon = connected
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        appState.connectionStatus,
+        appState.lastLiveSystemUpdate,
+      ]),
+      builder: (context, _) {
+        final live = appState.isSystemStateLive;
+        final color = live ? AppColors.success : AppColors.offline;
+        final label = live ? 'Online' : 'Offline';
+        final icon = live
             ? Icons.cloud_done_outlined
-            : busy
-                ? Icons.sync_rounded
-                : Icons.cloud_off_outlined;
+            : Icons.cloud_off_outlined;
 
         return Container(
           height: 34,
@@ -326,18 +390,22 @@ class _NavigationPanel extends StatelessWidget {
     required this.installerMode,
     required this.destinations,
     required this.selectedIndex,
+    required this.profile,
     required this.onSelect,
   });
 
   final bool installerMode;
   final List<_ProductDestination> destinations;
   final int selectedIndex;
+  final Future<InstallationAccess> profile;
   final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-    final firstInstaller = destinations.indexWhere((item) => item.installerOnly);
+    final firstInstaller = destinations.indexWhere(
+      (item) => item.installerOnly,
+    );
 
     return ColoredBox(
       color: AppColors.sidebar,
@@ -399,7 +467,7 @@ class _NavigationPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
             child: FutureBuilder<InstallationAccess>(
-              future: appState.resolveCurrentAccess(),
+              future: profile,
               builder: (context, snapshot) {
                 final profile = snapshot.data;
                 final email = appState.currentUser?.email;
@@ -509,7 +577,9 @@ class _SidebarDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = selected ? Colors.white : AppColors.sidebarTextMuted;
+    final foreground = selected
+        ? AppColors.sidebarText
+        : AppColors.sidebarTextMuted;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
@@ -549,16 +619,14 @@ class _SidebarDestination extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: selected ? Colors.white : AppColors.error,
+                          color: selected ? AppColors.primary : AppColors.error,
                           borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                         alignment: Alignment.center,
                         child: Text(
                           unread > 99 ? '99+' : '$unread',
                           style: AppTextStyles.caption.copyWith(
-                            color: selected
-                                ? AppColors.sidebarActive
-                                : Colors.white,
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
                           ),
                         ),

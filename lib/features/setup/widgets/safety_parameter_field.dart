@@ -4,22 +4,22 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 
-/// A single numeric safety setting with its unit and a short description.
+/// A single numeric safety setting with its unit.
 /// When [ceiling] is known, values above it are rejected — a configured
 /// operating limit must never exceed a physical hardware ceiling.
 class SafetyParameterField extends StatelessWidget {
   const SafetyParameterField({
     required this.label,
-    required this.description,
     required this.unit,
     required this.initialValue,
     required this.onChanged,
     super.key,
     this.ceiling,
+    this.description,
   });
 
   final String label;
-  final String description;
+  final String? description;
   final String unit;
   final double initialValue;
   final double? ceiling;
@@ -37,8 +37,10 @@ class SafetyParameterField extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: AppTextStyles.label),
-                const SizedBox(height: 2),
-                Text(description, style: AppTextStyles.caption),
+                if (description != null) ...[
+                  const SizedBox(height: 2),
+                  Text(description!, style: AppTextStyles.caption),
+                ],
                 if (ceiling != null) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -56,6 +58,7 @@ class SafetyParameterField extends StatelessWidget {
             width: 96,
             child: TextFormField(
               initialValue: initialValue.toStringAsFixed(0),
+              style: AppTextStyles.body,
               textAlign: TextAlign.center,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: false,

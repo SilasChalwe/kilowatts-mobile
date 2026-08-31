@@ -121,8 +121,9 @@ class _SetupSummaryScreenState extends State<SetupSummaryScreen> {
                         value: '${widget.setupSession.nodeNames.length}',
                       ),
                       SectionRow(
-                        label: 'Branches',
-                        value: '${topology.branches.length}',
+                        label: 'Loads Detected',
+                        value:
+                            '${topology.nodes.fold<int>(0, (sum, n) => sum + n.loads.length)}',
                       ),
                       SectionRow(
                         label: 'Loads Configured',

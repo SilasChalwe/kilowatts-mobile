@@ -11,7 +11,7 @@ import '../widgets/branch_assignment_card.dart';
 import '../widgets/setup_progress_indicator.dart';
 import 'schedule_configuration_screen.dart';
 
-/// Lets the user name and prioritize the Branches/Loads Central has already
+/// Lets the user name and prioritize the Loads Central has already
 /// discovered. Relay identity (owning node + pin) always comes from the
 /// topology payload — the user can never invent a channel here.
 class BranchLoadConfigurationScreen extends StatelessWidget {
@@ -24,53 +24,47 @@ class BranchLoadConfigurationScreen extends StatelessWidget {
     final appState = AppStateScope.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Branch & Load Assignment')),
+      appBar: AppBar(title: const Text('Load Assignment')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SetupProgressIndicator(
-                step: 4,
-                title: 'Branch & Load Assignment',
-              ),
+              const SetupProgressIndicator(step: 4, title: 'Load Assignment'),
               const SizedBox(height: AppSpacing.lg),
               Expanded(
                 child: ValueListenableBuilder<TopologyModel?>(
                   valueListenable: appState.topology,
                   builder: (context, topology, _) {
                     if (topology == null) {
-                      return const LoadingIndicator(
-                        message: 'Loading detected loads…',
-                      );
+                      return const LoadingIndicator();
                     }
-                    if (topology.branches.isEmpty) {
+                    final entries = [
+                      for (final node in topology.nodes)
+                        for (final load in node.loads) (node: node, load: load),
+                    ];
+                    if (entries.isEmpty) {
                       return const EmptyState(
                         icon: Icons.electrical_services_outlined,
                         title: 'No Loads Detected Yet',
-                        message:
-                            'Branches will appear here once Central reports them.',
                       );
                     }
 
                     return ListView(
                       children: [
-                        for (final branch in topology.branches) ...[
+                        for (final entry in entries) ...[
                           Builder(
                             builder: (context) {
-                              final node = topology.nodeByMac(
-                                branch.owningNodeMac,
-                              );
                               final nodeLabel =
-                                  setupSession.nodeNames[branch
-                                      .owningNodeMac] ??
-                                  node?.displayName ??
-                                  branch.owningNodeMac;
+                                  setupSession.nodeNames[entry.node.mac] ??
+                                  entry.node.displayName;
                               final draft = setupSession.draftFor(
-                                branch.owningNodeMac,
-                                branch.relayPin,
-                                branch.name ?? '$nodeLabel Load',
+                                entry.load.owningNodeMac,
+                                entry.load.relayPin,
+                                entry.load.name.isEmpty
+                                    ? '$nodeLabel Load'
+                                    : entry.load.name,
                               );
                               return Padding(
                                 padding: const EdgeInsets.only(
@@ -78,8 +72,8 @@ class BranchLoadConfigurationScreen extends StatelessWidget {
                                 ),
                                 child: BranchAssignmentCard(
                                   draft: draft,
-                                  branchLabel:
-                                      '$nodeLabel · Relay ${branch.relayPin}',
+                                  loadLabel:
+                                      '$nodeLabel · Relay ${entry.load.relayPin}',
                                 ),
                               );
                             },

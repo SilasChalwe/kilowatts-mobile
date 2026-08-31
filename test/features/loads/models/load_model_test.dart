@@ -47,7 +47,7 @@ void main() {
       expect(load.schedule.startMinute, 30);
       expect(load.schedule.endHour, 2);
       expect(load.schedule.endMinute, 15);
-      expect(load.plannedPowerW, 6.0);
+      expect(load.ratedPowerW, 6.0);
       expect(load.id, 'AA:BB:CC:DD:EE:FF:26');
     });
 
@@ -102,7 +102,7 @@ void main() {
       expect(load.requestedState, true);
       expect(load.schedule.startHour, 6);
       expect(load.schedule.startMinute, 30);
-      expect(load.plannedPowerW, 8.0);
+      expect(load.ratedPowerW, 8.0);
       expect(
         load.rejectionReason,
         LoadRejectionReason.batteryReserveProtected,

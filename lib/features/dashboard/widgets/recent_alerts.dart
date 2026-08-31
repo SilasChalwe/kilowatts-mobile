@@ -25,7 +25,6 @@ class RecentAlerts extends StatelessWidget {
               child: EmptyState(
                 icon: Icons.check_circle_outline,
                 title: 'No Active Alerts',
-                message: 'Everything looks normal.',
               ),
             )
           : Column(

@@ -9,14 +9,14 @@ import '../../system/models/node_model.dart';
 class DiscoveredNodeCard extends StatelessWidget {
   const DiscoveredNodeCard({
     required this.node,
-    required this.branchCount,
+    required this.loadCount,
     super.key,
     this.isConfigured = false,
     this.onTap,
   });
 
   final NodeModel node;
-  final int branchCount;
+  final int loadCount;
   final bool isConfigured;
   final VoidCallback? onTap;
 
@@ -58,8 +58,8 @@ class DiscoveredNodeCard extends StatelessWidget {
                     const SizedBox(height: AppSpacing.xxs),
                     Text(
                       needsConfiguration
-                          ? 'New Node · $branchCount ${branchCount == 1 ? 'load' : 'loads'} detected'
-                          : '${node.role.name == 'central' ? 'Central Node' : 'Smart Node'} · $branchCount ${branchCount == 1 ? 'load' : 'loads'}',
+                          ? 'New Node · $loadCount ${loadCount == 1 ? 'load' : 'loads'} detected'
+                          : '${node.role.name == 'central' ? 'Central Node' : 'Smart Node'} · $loadCount ${loadCount == 1 ? 'load' : 'loads'}',
                       style: AppTextStyles.caption,
                     ),
                   ],

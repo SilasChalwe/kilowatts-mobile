@@ -114,8 +114,8 @@ class LoadCard extends StatelessWidget {
                   ),
                   Expanded(
                     child: _CardMetric(
-                      label: 'Planned power',
-                      value: Formatters.power(load.plannedPowerW),
+                      label: 'Rated power',
+                      value: Formatters.power(load.ratedPowerW),
                     ),
                   ),
                 ],

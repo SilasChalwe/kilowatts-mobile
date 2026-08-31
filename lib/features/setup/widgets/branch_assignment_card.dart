@@ -7,19 +7,19 @@ import '../../loads/widgets/load_mode_selector.dart';
 import '../../loads/widgets/priority_selector.dart';
 import '../models/setup_session.dart';
 
-/// A single discovered Branch/Load the user is configuring during setup.
-/// The relay identity (owning node + pin) is fixed — only name, priority
-/// and mode are editable here.
+/// A single discovered Load the user is configuring during setup. The
+/// relay identity (owning node + pin) is fixed — only name, priority and
+/// mode are editable here.
 class BranchAssignmentCard extends StatefulWidget {
   const BranchAssignmentCard({
     required this.draft,
-    required this.branchLabel,
+    required this.loadLabel,
     super.key,
     this.onChanged,
   });
 
   final LoadConfigDraft draft;
-  final String branchLabel;
+  final String loadLabel;
   final VoidCallback? onChanged;
 
   @override
@@ -45,7 +45,7 @@ class _BranchAssignmentCardState extends State<BranchAssignmentCard> {
   @override
   Widget build(BuildContext context) {
     return SectionCard(
-      title: widget.branchLabel,
+      title: widget.loadLabel,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

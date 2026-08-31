@@ -45,17 +45,12 @@ class DiscoveredNodesScreen extends StatelessWidget {
                   valueListenable: appState.topology,
                   builder: (context, topology, _) {
                     if (topology == null) {
-                      return const LoadingIndicator(
-                        message:
-                            'Waiting for the Central Node to report its devices…',
-                      );
+                      return const LoadingIndicator();
                     }
                     if (topology.smartNodes.isEmpty) {
                       return const EmptyState(
                         icon: Icons.wifi_tethering_error_rounded,
                         title: 'No Smart Nodes Found Yet',
-                        message:
-                            'Power on your Smart Nodes and keep them near the Central Node.',
                       );
                     }
 
@@ -71,11 +66,7 @@ class DiscoveredNodesScreen extends StatelessWidget {
                                 role: NodeRole.central,
                                 online: false,
                               ),
-                          branchCount: topology.central == null
-                              ? 0
-                              : topology
-                                    .branchesOf(topology.central!.mac)
-                                    .length,
+                          loadCount: topology.central?.loads.length ?? 0,
                         ),
                         const SizedBox(height: AppSpacing.lg),
                         Text('Smart Nodes', style: AppTextStyles.label),
@@ -83,7 +74,7 @@ class DiscoveredNodesScreen extends StatelessWidget {
                         for (final node in topology.smartNodes) ...[
                           DiscoveredNodeCard(
                             node: node,
-                            branchCount: topology.branchesOf(node.mac).length,
+                            loadCount: node.loads.length,
                             isConfigured: setupSession.nodeNames.containsKey(
                               node.mac,
                             ),

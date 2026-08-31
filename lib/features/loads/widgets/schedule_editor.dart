@@ -120,19 +120,7 @@ class ScheduleEditor extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xxs),
-          const Text(
-            'Overnight windows are supported, for example 22:00–02:00.',
-            style: AppTextStyles.caption,
-          ),
-        ] else
-          const Padding(
-            padding: EdgeInsets.only(top: AppSpacing.xxs),
-            child: Text(
-              'No preferred running window — priority and available power decide scheduling.',
-              style: AppTextStyles.caption,
-            ),
-          ),
+        ],
       ],
     );
   }

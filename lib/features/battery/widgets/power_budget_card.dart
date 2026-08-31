@@ -16,7 +16,7 @@ class PowerBudgetCard extends StatelessWidget {
       child: Column(
         children: [
           SectionRow(
-            label: 'Power budget',
+            label: 'Available power passed to Best-First',
             value: Formatters.power(state.availablePowerW),
           ),
           SectionRow(

@@ -30,11 +30,6 @@ class ErrorState extends StatelessWidget {
           width: double.infinity,
           constraints: const BoxConstraints(maxWidth: 680),
           padding: const EdgeInsets.all(AppSpacing.xl),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppColors.border),
-          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

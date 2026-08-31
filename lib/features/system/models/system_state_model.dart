@@ -21,6 +21,16 @@ class SystemStateModel {
     this.batteryVoltage,
     this.batteryCurrent,
     this.batterySensorConfigured,
+    this.batteryCapacityAmpHours,
+    this.batteryNominalVoltageV,
+    this.batteryRatedEnergyWattHours,
+    this.storedEnergyWattHours,
+    this.usableEnergyWattHours,
+    this.reserveConfigured,
+    this.reserveSoCPercent,
+    this.requiredRuntimeConfigured,
+    this.requiredRuntimeHours,
+    this.sustainablePowerW,
     this.estimatedTotalLoadPowerW,
     this.availablePowerW,
     this.fixedLoadPowerW,
@@ -45,6 +55,50 @@ class SystemStateModel {
   final double? batteryVoltage;
   final double? batteryCurrent;
   final bool? batterySensorConfigured;
+
+  /// The installer-entered battery capacity (Ah) — the live, authoritative
+  /// source of this value. Not a per-device local cache: any installer
+  /// session sees the same number Central is actually configured with.
+  final double? batteryCapacityAmpHours;
+
+  /// The installer-entered nameplate voltage (V) — distinct from
+  /// [batteryVoltage], which is the live measured reading.
+  final double? batteryNominalVoltageV;
+
+  /// The battery's full energy capacity (`capacityAmpHours × nominalVoltageVolts`)
+  /// at 100% charge — unaffected by current SoC or reserve. This is
+  /// [batteryCapacityAmpHours] expressed as energy rather than a raw Ah
+  /// rating.
+  final double? batteryRatedEnergyWattHours;
+
+  /// Total energy the battery currently holds, derived from its rated
+  /// capacity and current state of charge — not reduced by the reserve.
+  final double? storedEnergyWattHours;
+
+  /// Energy above the configured reserve threshold — what the system can
+  /// actually draw down to before battery protection engages.
+  final double? usableEnergyWattHours;
+
+  /// Whether an installer has configured power limits (and therefore a
+  /// reserve threshold) at all yet. `reserveSoCPercent` is not meaningful
+  /// when this is false.
+  final bool? reserveConfigured;
+
+  /// The currently configured battery reserve threshold (%). This is the
+  /// only live source of that value — it is set via the installer's Safety
+  /// Policy or the homeowner's reserve control, but never echoed back
+  /// anywhere except this field.
+  final double? reserveSoCPercent;
+
+  /// Whether an installer has set a required-runtime target at all
+  /// (`requiredRuntimeHours` is 0/not meaningful when this is false).
+  final bool? requiredRuntimeConfigured;
+
+  /// The currently configured required-runtime target (hours), live from
+  /// Central — the same value the installer's Safety Policy sets.
+  final double? requiredRuntimeHours;
+
+  final double? sustainablePowerW;
 
   /// Conservative total derived from relay state and installer ratings.
   final double? estimatedTotalLoadPowerW;
@@ -105,24 +159,50 @@ class SystemStateModel {
       'lastOptimizationEpochSeconds',
     );
 
+    // powerFlow is only meaningful once Central has actually computed a
+    // power budget (after its first successful optimization cycle, with
+    // configuration + a fresh SoC reading). Before that, every numeric
+    // field in the object is an unset 0, not a real reading — treat it as
+    // absent rather than display a misleading zero. Missing field (older
+    // firmware/cached data) is treated as valid for backward compatibility.
+    final powerFlowValid = power.boolOrNull('powerFlowValid') ?? true;
+    double? validPower(String key) =>
+        powerFlowValid ? power.doubleOrNull(key) : null;
+
     return SystemStateModel(
       batterySocPercent: battery.doubleOrNull('stateOfChargePercent'),
       batteryVoltage: battery.doubleOrNull('voltageVolts'),
       batteryCurrent: battery.doubleOrNull('currentAmps'),
       batterySensorConfigured: battery.boolOrNull('sensorConfigured'),
+      batteryCapacityAmpHours: battery.doubleOrNull('capacityAmpHours'),
+      batteryNominalVoltageV: battery.doubleOrNull('nominalVoltageVolts'),
+      batteryRatedEnergyWattHours: battery.doubleOrNull('ratedEnergyWattHours'),
+      storedEnergyWattHours: battery.doubleOrNull('storedEnergyWattHours'),
+      usableEnergyWattHours: battery.doubleOrNull('usableEnergyWattHours'),
+      reserveConfigured: battery.boolOrNull('reserveConfigured'),
+      reserveSoCPercent: battery.doubleOrNull('reserveSoCPercent'),
+      requiredRuntimeConfigured: battery.boolOrNull(
+        'requiredRuntimeConfigured',
+      ),
+      requiredRuntimeHours: battery.doubleOrNull('requiredRuntimeHours'),
+      sustainablePowerW: battery.doubleOrNull(
+        'maximumPowerForRequiredRuntimeWatts',
+      ),
       // Firmware has no single "estimated total load power" field; the
       // closest equivalent is fixed + selected-auto power added together.
-      estimatedTotalLoadPowerW: _sumOrNull(
-        power.doubleOrNull('fixedOnPowerWatts'),
-        power.doubleOrNull('selectedAutoLoadPowerWatts'),
-      ),
-      availablePowerW: power.doubleOrNull('automaticPowerBudgetWatts'),
-      fixedLoadPowerW: power.doubleOrNull('fixedOnPowerWatts'),
-      autoLoadPowerW: power.doubleOrNull('selectedAutoLoadPowerWatts'),
-      remainingPowerW: power.doubleOrNull('remainingAutomaticBudgetWatts'),
+      estimatedTotalLoadPowerW: powerFlowValid
+          ? _sumOrNull(
+              power.doubleOrNull('fixedOnPowerWatts'),
+              power.doubleOrNull('selectedAutoLoadPowerWatts'),
+            )
+          : null,
+      availablePowerW: validPower('automaticPowerBudgetWatts'),
+      fixedLoadPowerW: validPower('fixedOnPowerWatts'),
+      autoLoadPowerW: validPower('selectedAutoLoadPowerWatts'),
+      remainingPowerW: validPower('remainingAutomaticBudgetWatts'),
       // Firmware does not publish a separate "committed power" field in
       // powerFlow; fixedOnPowerWatts is the FIXED_ON commitment.
-      committedPowerW: power.doubleOrNull('fixedOnPowerWatts'),
+      committedPowerW: validPower('fixedOnPowerWatts'),
       wifiConnected: connectivity.boolOrNull('wifiConnected'),
       wifiState: connectivity.stringOrNull('wifiState'),
       mqttConnected: connectivity.boolOrNull('mqttConnected'),

@@ -54,12 +54,6 @@ class _SystemConnectionScreenState extends State<SystemConnectionScreen> {
               const KilowattsLogo(size: 96),
               const SizedBox(height: AppSpacing.md),
               const Text('Connecting to Kilowatts', style: AppTextStyles.title),
-              const SizedBox(height: AppSpacing.xxs),
-              const Text(
-                'Setting up a connection to your solar load management system.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.subtitle,
-              ),
               const SizedBox(height: AppSpacing.lg),
               Expanded(
                 child: SingleChildScrollView(
@@ -117,7 +111,8 @@ class _SystemConnectionScreenState extends State<SystemConnectionScreen> {
                                   MqttConnectionStatus.authenticationFailure ||
                               status == MqttConnectionStatus.tlsFailure ||
                               status == MqttConnectionStatus.networkFailure ||
-                              status == MqttConnectionStatus.notConfigured)
+                              status == MqttConnectionStatus.notConfigured ||
+                              status == MqttConnectionStatus.disconnected)
                             SecondaryButton(
                               label: 'Retry',
                               onPressed: appState.connectMqtt,

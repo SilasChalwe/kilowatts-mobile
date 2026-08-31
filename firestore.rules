@@ -1,22 +1,76 @@
 rules_version = '2';
 
-// users/{email} holds the Kilowatts role (installer/homeowner) and
-// installationId that lib/features/auth/data/access_control_service.dart
-// reads to gate access. A signed-in account may only ever read its own
-// document; only an existing installer may read or write any document,
+// users/{email} holds the Kilowatts role (installer/homeowner) and Firebase
+// Auth UID used to gate access. A signed-in account may only ever read its own
+// document; only an existing installer may read or write other documents,
 // including granting the very first installer's own doc by hand in the
 // Firebase Console (console writes bypass these rules for project owners).
 service cloud.firestore {
-  match /databases/{database}/documents {
+  match /databases/{db}/documents {
     match /users/{emailId} {
-      allow read: if request.auth != null && request.auth.token.email == emailId;
-      allow read, write: if isInstaller();
+      allow read: if isInstaller(db) ||
+        (request.auth != null &&
+          (request.auth.token.email == emailId ||
+            resource.data.uid == request.auth.uid));
+      allow create: if isNewUnassignedProfile(emailId);
+      allow update: if isInstaller(db) || isOwnProfileUpdate(emailId);
+    }
+
+    // Installers provision MQTT settings for any installation. The assigned
+    // homeowner's app must be able to read its own broker credentials to
+    // connect, but never write them — broker configuration is installer-only.
+    match /installations/{uid}/settings/mqtt {
+      allow read: if isInstaller(db) || isAssignedUser(uid, db);
+      allow write: if isInstaller(db);
+    }
+
+    match /installations/{ownerUid}/presence/{userUid} {
+      allow read: if isInstaller(db) ||
+        (request.auth != null && request.auth.uid == userUid);
+      allow create, update: if request.auth != null &&
+        request.auth.uid == userUid &&
+        request.resource.data.keys().hasOnly(['online', 'status', 'lastSeen']);
+    }
+
+    match /telemetry/{uid}/history/{series} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
   }
 
-  function isInstaller() {
+  function isInstaller(database) {
     return request.auth != null &&
       exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
       get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'installer';
+  }
+
+  function isNewUnassignedProfile(emailId) {
+    return request.auth != null &&
+      request.auth.token.email == emailId &&
+      request.resource.data.uid == request.auth.uid &&
+      request.resource.data.role == 'unassigned';
+  }
+
+  function isOwnProfileUpdate(emailId) {
+    return request.auth != null &&
+      request.auth.token.email == emailId &&
+      request.resource.data.uid == request.auth.uid &&
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'uid',
+        'fullName',
+        'updatedAt'
+      ]);
+  }
+
+  // The homeowner's Firebase Authentication UID is also the installation
+  // key. No separately assigned installation ID exists.
+  function isAssignedUser(uid, database) {
+    return request.auth != null &&
+      request.auth.uid == uid &&
+      exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+      get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.uid == uid &&
+      (
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'homeowner' ||
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'installer'
+      );
   }
 }

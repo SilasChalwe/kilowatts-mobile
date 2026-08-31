@@ -10,8 +10,6 @@ import '../models/load_model.dart';
 import '../widgets/load_card.dart';
 import 'load_details_screen.dart';
 
-enum _LoadFilter { all, fixed, auto, on, off, unavailable }
-
 class LoadsScreen extends StatefulWidget {
   const LoadsScreen({super.key});
 
@@ -21,7 +19,6 @@ class LoadsScreen extends StatefulWidget {
 
 class _LoadsScreenState extends State<LoadsScreen> {
   final _searchController = TextEditingController();
-  _LoadFilter _filter = _LoadFilter.all;
 
   @override
   void dispose() {
@@ -30,37 +27,30 @@ class _LoadsScreenState extends State<LoadsScreen> {
   }
 
   List<LoadModel> _apply(List<LoadModel> loads) {
-    final query = _searchController.text.trim().toLowerCase();
+    final terms = _searchController.text
+        .trim()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toList();
     return loads.where((load) {
-      if (query.isNotEmpty) {
-        final searchable = [
-          load.name,
-          load.owningNodeName ?? '',
-          load.owningNodeMac,
-        ].join(' ').toLowerCase();
-        if (!searchable.contains(query)) return false;
-      }
-      switch (_filter) {
-        case _LoadFilter.all:
-          return true;
-        case _LoadFilter.fixed:
-          return load.mode == LoadMode.fixed;
-        case _LoadFilter.auto:
-          return load.mode == LoadMode.auto;
-        case _LoadFilter.on:
-          return load.displayState == true;
-        case _LoadFilter.off:
-          return load.displayState != true && load.available;
-        case _LoadFilter.unavailable:
-          return !load.available;
-      }
+      if (terms.isEmpty) return true;
+      final searchable = [
+        load.name,
+        load.owningNodeName ?? '',
+        load.owningNodeMac,
+        load.mode == LoadMode.fixed ? 'fixed' : 'auto automatic',
+        load.displayState == true ? 'on' : 'off',
+        load.available ? 'available' : 'unavailable',
+      ].join(' ').toLowerCase();
+      return terms.every(searchable.contains);
     }).toList();
   }
 
   void _openLoad(LoadModel load) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => LoadDetailsScreen(load: load)));
   }
 
   @override
@@ -90,7 +80,10 @@ class _LoadsScreenState extends State<LoadsScreen> {
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
                               hintText: 'Search loads or nodes',
-                              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                              prefixIcon: const Icon(
+                                Icons.search_rounded,
+                                size: 20,
+                              ),
                               suffixIcon: _searchController.text.isEmpty
                                   ? null
                                   : IconButton(
@@ -99,44 +92,23 @@ class _LoadsScreenState extends State<LoadsScreen> {
                                         _searchController.clear();
                                         setState(() {});
                                       },
-                                      icon: const Icon(Icons.close_rounded, size: 19),
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        size: 19,
+                                      ),
                                     ),
                             ),
                           ),
                         );
 
-                        final filters = Wrap(
-                          spacing: AppSpacing.xs,
-                          runSpacing: AppSpacing.xs,
-                          children: [
-                            for (final filter in _LoadFilter.values)
-                              ChoiceChip(
-                                label: Text(_filterLabel(filter)),
-                                selected: _filter == filter,
-                                onSelected: (_) => setState(() => _filter = filter),
-                              ),
-                          ],
-                        );
-
                         if (!horizontal) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              search,
-                              const SizedBox(height: AppSpacing.sm),
-                              filters,
-                            ],
+                            children: [search],
                           );
                         }
 
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            search,
-                            const SizedBox(width: AppSpacing.md),
-                            Expanded(child: filters),
-                          ],
-                        );
+                        return search;
                       },
                     ),
                   ),
@@ -149,9 +121,6 @@ class _LoadsScreenState extends State<LoadsScreen> {
                       title: loads.isEmpty
                           ? 'No loads configured'
                           : 'No loads match these filters',
-                      message: loads.isEmpty
-                          ? 'Loads will appear here after they are configured.'
-                          : 'Change the search term or filter.',
                     )
                   else
                     ResponsiveCardGrid(
@@ -167,8 +136,8 @@ class _LoadsScreenState extends State<LoadsScreen> {
                     Text(
                       '${filtered.length} of ${loads.length} loads',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
+                        color: AppColors.textTertiary,
+                      ),
                     ),
                   ],
                 ],
@@ -178,22 +147,5 @@ class _LoadsScreenState extends State<LoadsScreen> {
         },
       ),
     );
-  }
-
-  String _filterLabel(_LoadFilter filter) {
-    switch (filter) {
-      case _LoadFilter.all:
-        return 'All';
-      case _LoadFilter.fixed:
-        return 'Fixed';
-      case _LoadFilter.auto:
-        return 'Automatic';
-      case _LoadFilter.on:
-        return 'On';
-      case _LoadFilter.off:
-        return 'Off';
-      case _LoadFilter.unavailable:
-        return 'Unavailable';
-    }
   }
 }

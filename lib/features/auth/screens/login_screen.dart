@@ -86,10 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
           key: _formKey,
           child: Column(
             children: [
-              const AuthHeader(
-                title: 'Welcome Back',
-                subtitle: 'Sign in to continue to Kilowatts.',
-              ),
+              const AuthHeader(title: 'Welcome Back'),
               const SizedBox(height: AppSpacing.xl),
               if (_errorMessage != null) ...[
                 InlineMessage(message: _errorMessage!, isError: true),
@@ -139,8 +136,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: _submit,
               ),
               const SizedBox(height: AppSpacing.lg),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: AppSpacing.xxs,
                 children: [
                   const Text('Don\'t have an account?'),
                   TextButton(

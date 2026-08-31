@@ -9,30 +9,37 @@ class MqttTopics {
 
   final String namespace;
 
+  String get status => '$namespace/status';
   String get stateSystem => '$namespace/state/system';
   String get stateTree => '$namespace/state/tree';
   String get stateLoads => '$namespace/state/loads';
   String get stateNodes => '$namespace/state/nodes';
   String get events => '$namespace/events';
+  String get alerts => '$namespace/alerts';
   String get commandsLoad => '$namespace/commands/load';
   String get commandsSystem => '$namespace/commands/system';
   String get commandsConfig => '$namespace/commands/config';
   String get commandsSimulation => '$namespace/commands/simulation';
+  String get commandsReserve => '$namespace/commands/reserve';
   String get acks => '$namespace/acks';
 
   List<String> get subscriptions => [
+    status,
     stateSystem,
     stateTree,
     stateLoads,
     stateNodes,
     events,
+    alerts,
     acks,
   ];
 }
 
 abstract final class AppConstants {
-  /// Retained state older than this is shown as stale rather than live.
-  static const Duration staleDataThreshold = Duration(minutes: 2);
+  /// Central refreshes availability on each publish cycle (five minutes by
+  /// default). Three missed default cycles are treated as stale when the
+  /// broker did not deliver an explicit Last-Will `offline` message.
+  static const Duration deviceAvailabilityTimeout = Duration(minutes: 16);
 
   /// How long a load/system command waits for a broker ack before it is
   /// reported as failed to the UI.
