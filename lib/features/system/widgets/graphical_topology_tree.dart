@@ -1,0 +1,419 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../loads/models/load_model.dart';
+import '../models/node_model.dart';
+import '../models/topology_model.dart';
+
+class GraphicalTopologyTree extends StatelessWidget {
+  const GraphicalTopologyTree({
+    required this.topology,
+    required this.loads,
+    super.key,
+    this.onNodeTap,
+    this.onLoadTap,
+  });
+
+  final TopologyModel topology;
+  final List<LoadModel> loads;
+  final ValueChanged<NodeModel>? onNodeTap;
+  final ValueChanged<LoadModel>? onLoadTap;
+
+  static const double _boxWidth = 228;
+  static const double _boxHeight = 92;
+  static const double _hGap = 30;
+  static const double _vGap = 56;
+
+  List<LoadModel> _loadsOwnedBy(String nodeMac) =>
+      loads.where((load) => load.owningNodeMac == nodeMac).toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final central = topology.central;
+    if (central == null) return const SizedBox.shrink();
+
+    final root = _layoutNode(central, depth: 0, nextSlot: _Cell(0));
+    final width = (root.maxSlot + 1) * (_boxWidth + _hGap) - _hGap;
+    final height = (root.maxDepth + 1) * (_boxHeight + _vGap) - _vGap;
+
+    final diagram = SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        children: [
+          CustomPaint(
+            size: Size(width, height),
+            painter: _ConnectorPainter(root),
+          ),
+          ..._buildBoxes(root),
+        ],
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: SizedBox(
+            width: constraints.maxWidth,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xs,
+                vertical: AppSpacing.sm,
+              ),
+              child: FittedBox(
+                // Width is the responsive constraint; tall trees can scroll
+                // vertically so their node details are not made tiny.
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.topCenter,
+                child: diagram,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  _LaidOutNode _layoutNode(
+    NodeModel node, {
+    required int depth,
+    required _Cell nextSlot,
+  }) {
+    final children = <_LaidOutNode>[];
+
+    for (final load in _loadsOwnedBy(node.mac)) {
+      children.add(
+        _LaidOutNode(
+          titleLine1: load.name,
+          titleLine2: 'GPIO ${load.relayPin}',
+          slot: nextSlot.value.toDouble(),
+          depth: depth + 1,
+          load: load,
+        ),
+      );
+      nextSlot.value += 1;
+    }
+
+    for (final child in topology.childrenOf(node.mac)) {
+      children.add(_layoutNode(child, depth: depth + 1, nextSlot: nextSlot));
+    }
+
+    final double slot;
+    if (children.isEmpty) {
+      slot = nextSlot.value.toDouble();
+      nextSlot.value += 1;
+    } else {
+      slot = (children.first.slot + children.last.slot) / 2;
+    }
+
+    return _LaidOutNode(
+      titleLine1: node.role == NodeRole.central ? 'Central node' : 'Smart node',
+      titleLine2: node.role == NodeRole.central
+          ? (node.name ?? 'Central ESP32')
+          : (node.name ?? node.mac),
+      slot: slot,
+      depth: depth,
+      node: node,
+      children: children,
+    );
+  }
+
+  List<Widget> _buildBoxes(_LaidOutNode node) {
+    final widgets = <Widget>[_buildBox(node)];
+    for (final child in node.children) {
+      widgets.addAll(_buildBoxes(child));
+    }
+    return widgets;
+  }
+
+  Widget _buildBox(_LaidOutNode node) {
+    final left = node.slot * (_boxWidth + _hGap);
+    final top = node.depth * (_boxHeight + _vGap);
+    final load = node.load;
+    final physicalNode = node.node;
+    final isLoad = load != null;
+    final isOn = load?.displayState == true;
+
+    final accent = isLoad
+        ? (isOn ? AppColors.success : AppColors.error)
+        : (physicalNode?.online == false ? AppColors.error : AppColors.primary);
+
+    final VoidCallback? onTap = physicalNode != null
+        ? (onNodeTap == null ? null : () => onNodeTap!(physicalNode))
+        : (load == null || onLoadTap == null ? null : () => onLoadTap!(load));
+
+    return Positioned(
+      left: left,
+      top: top.toDouble(),
+      width: _boxWidth,
+      height: _boxHeight,
+      child: Material(
+        color: isLoad ? accent.withValues(alpha: 0.06) : AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: BorderSide(color: accent.withValues(alpha: 0.34)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          mouseCursor: onTap == null
+              ? MouseCursor.defer
+              : SystemMouseCursors.click,
+          hoverColor: accent.withValues(alpha: 0.06),
+          focusColor: accent.withValues(alpha: 0.09),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Icon(
+                    isLoad
+                        ? (isOn
+                              ? Icons.flash_on_rounded
+                              : Icons.power_settings_new_rounded)
+                        : (physicalNode?.role == NodeRole.central
+                              ? Icons.memory_rounded
+                              : Icons.developer_board_outlined),
+                    size: 20,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: load != null
+                      ? _LoadTopologyContent(load: load, accent: accent)
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              node.titleLine1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.textTertiary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              node.titleLine2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.label,
+                            ),
+                          ],
+                        ),
+                ),
+                if (physicalNode != null)
+                  Semantics(
+                    label: physicalNode.online ? 'Online' : 'Offline',
+                    child: Tooltip(
+                      message: physicalNode.online ? 'Online' : 'Offline',
+                      child: Icon(
+                        physicalNode.online
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.cancel_outlined,
+                        size: 17,
+                        color: physicalNode.online
+                            ? AppColors.success
+                            : AppColors.error,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadTopologyContent extends StatelessWidget {
+  const _LoadTopologyContent({required this.load, required this.accent});
+
+  final LoadModel load;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final isOn = load.displayState == true;
+    final mode = load.mode == LoadMode.fixed ? 'FIXED' : 'AUTO';
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          load.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.label,
+        ),
+        const SizedBox(height: 5),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _TopologyTag(
+              label: isOn ? 'ON' : 'OFF',
+              foreground: accent,
+              background: accent.withValues(alpha: 0.10),
+            ),
+            _TopologyTag(
+              label: mode,
+              foreground: AppColors.textSecondary,
+              background: AppColors.surfaceMuted,
+            ),
+            Text('GPIO ${load.relayPin}', style: AppTextStyles.caption),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TopologyTag extends StatelessWidget {
+  const _TopologyTag({
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.caption.copyWith(
+          color: foreground,
+          fontWeight: FontWeight.w700,
+          fontSize: 10,
+        ),
+      ),
+    );
+  }
+}
+
+class _Cell {
+  _Cell(this.value);
+  int value;
+}
+
+class _LaidOutNode {
+  _LaidOutNode({
+    required this.titleLine1,
+    required this.titleLine2,
+    required this.slot,
+    required this.depth,
+    this.node,
+    this.load,
+    this.children = const [],
+  });
+
+  final String titleLine1;
+  final String titleLine2;
+  final double slot;
+  final int depth;
+  final NodeModel? node;
+  final LoadModel? load;
+  final List<_LaidOutNode> children;
+
+  double get maxSlot {
+    var result = slot;
+    for (final child in children) {
+      final childMax = child.maxSlot;
+      if (childMax > result) result = childMax;
+    }
+    return result;
+  }
+
+  int get maxDepth {
+    var result = depth;
+    for (final child in children) {
+      final childMax = child.maxDepth;
+      if (childMax > result) result = childMax;
+    }
+    return result;
+  }
+}
+
+class _ConnectorPainter extends CustomPainter {
+  _ConnectorPainter(this.root);
+
+  final _LaidOutNode root;
+
+  static const double _boxWidth = GraphicalTopologyTree._boxWidth;
+  static const double _boxHeight = GraphicalTopologyTree._boxHeight;
+  static const double _hGap = GraphicalTopologyTree._hGap;
+  static const double _vGap = GraphicalTopologyTree._vGap;
+
+  Offset _bottomCenter(_LaidOutNode node) => Offset(
+    node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
+    node.depth * (_boxHeight + _vGap) + _boxHeight,
+  );
+
+  Offset _topCenter(_LaidOutNode node) => Offset(
+    node.slot * (_boxWidth + _hGap) + _boxWidth / 2,
+    node.depth * (_boxHeight + _vGap),
+  );
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = AppColors.borderStrong
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    final arrowPaint = Paint()
+      ..color = AppColors.borderStrong
+      ..style = PaintingStyle.fill;
+
+    void drawNode(_LaidOutNode node) {
+      final start = _bottomCenter(node);
+      for (final child in node.children) {
+        final end = _topCenter(child);
+        final midY = (start.dy + end.dy) / 2;
+        final path = Path()
+          ..moveTo(start.dx, start.dy)
+          ..cubicTo(start.dx, midY, end.dx, midY, end.dx, end.dy - 7);
+        canvas.drawPath(path, linePaint);
+
+        const arrowSize = 4.5;
+        final arrowPath = Path()
+          ..moveTo(end.dx, end.dy)
+          ..lineTo(end.dx - arrowSize, end.dy - 7 - arrowSize)
+          ..lineTo(end.dx + arrowSize, end.dy - 7 - arrowSize)
+          ..close();
+        canvas.drawPath(arrowPath, arrowPaint);
+
+        drawNode(child);
+      }
+    }
+
+    drawNode(root);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConnectorPainter oldDelegate) => true;
+}

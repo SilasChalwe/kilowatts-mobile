@@ -1,0 +1,7 @@
+# Copy to android/key.properties (ignored by Git) and replace every value.
+# Use an upload key kept outside this repository; never commit the keystore
+# or this completed file.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=kilowatts-upload
+storeFile=/absolute/path/to/kilowatts-upload.jks

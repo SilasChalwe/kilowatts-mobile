@@ -1,18 +1,24 @@
-# kilowatts_mobile
+# Kilowatts Mobile
 
-A new Flutter project.
+Kilowatts is a mobile-only Flutter application with role-based entry:
 
-## Getting Started
+- Homeowners operate their assigned energy installation.
+- Installers receive one commissioning screen for homeowner handover, MQTT,
+  and device-asset assignment.
 
-This project is a starting point for a Flutter application.
+Each homeowner's installation is identified by their own Firebase Auth UID,
+and user profiles are keyed by email. See
+[docs/firestore-schema.md](docs/firestore-schema.md) for the full schema.
 
-A few resources to get you started if this is your first Flutter project:
+Release builds must use a private Android upload key. Copy
+`android/key.properties.example` to `android/key.properties`, set the real
+keystore values, and keep both the completed properties file and the keystore
+outside version control.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Verify
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-# kilowatts-mobile
+```sh
+flutter analyze
+flutter test
+flutter build apk --debug
+```
